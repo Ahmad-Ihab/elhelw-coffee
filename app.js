@@ -116,17 +116,19 @@
         field("عدد أكياس 50 جرام","bags_50","number",'min="0" step="1" value="0" inputmode="numeric" required')+
         field("عدد أكياس 100 جرام","bags_100","number",'min="0" step="1" value="0" inputmode="numeric" required')+
         field("عدد أكياس 200 جرام","bags_200","number",'min="0" step="1" value="0" inputmode="numeric" required')+
+        field("عدد أكياس 500 جرام","bags_500","number",'min="0" step="1" value="0" inputmode="numeric" required')+
+        field("عدد أكياس 1 كيلو","bags_1000","number",'min="0" step="1" value="0" inputmode="numeric" required')+
         '<div class="field"><span>إجمالي الوزن بالكيلو</span><strong id="stock-total-kg">0.000 كجم</strong></div>'+
         field("ملاحظات","notes")));
       const form=$("receive-form");
       const updateTotal=()=>{
-        const n50=Number(form.elements.bags_50.value||0),n100=Number(form.elements.bags_100.value||0),n200=Number(form.elements.bags_200.value||0);
-        const valid=[n50,n100,n200].every(n=>Number.isInteger(n)&&n>=0);
-        const kg=(n50*50+n100*100+n200*200)/1000;
+        const n50=Number(form.elements.bags_50.value||0),n100=Number(form.elements.bags_100.value||0),n200=Number(form.elements.bags_200.value||0),n500=Number(form.elements.bags_500.value||0),n1000=Number(form.elements.bags_1000.value||0);
+        const valid=[n50,n100,n200,n500,n1000].every(n=>Number.isInteger(n)&&n>=0);
+        const kg=(n50*50+n100*100+n200*200+n500*500+n1000*1000)/1000;
         $("stock-total-kg").textContent=valid?`${kg.toFixed(3)} كجم`:"راجع أعداد الأكياس";
         return valid?kg:NaN;
       };
-      ["bags_50","bags_100","bags_200"].forEach(name=>form.elements[name].addEventListener("input",updateTotal));
+      ["bags_50","bags_100","bags_200","bags_500","bags_1000"].forEach(name=>form.elements[name].addEventListener("input",updateTotal));
       form.onsubmit=async e=>{
         e.preventDefault();const f=new FormData(form);const totalKg=updateTotal();
         if(!Number.isFinite(totalKg)||totalKg<=0)return toast("أدخل عدد أكياس صحيحًا، ويجب أن يكون الإجمالي أكبر من صفر");
