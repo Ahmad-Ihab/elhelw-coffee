@@ -26,7 +26,7 @@
     sb=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_PUBLISHABLE_KEY);
     const {data:{session}}=await sb.auth.getSession();
     if(session) await loadUser(session.user); else $("auth-view").classList.remove("hidden");
-    sb.auth.onAuthStateChange((_event,s)=>{if(!s){location.reload()}});
+    sb.auth.onAuthStateChange((event,s)=>{if(event==="SIGNED_OUT"&&!s){location.reload()}});
   }
   async function loadUser(user){
     sessionUser=user;
