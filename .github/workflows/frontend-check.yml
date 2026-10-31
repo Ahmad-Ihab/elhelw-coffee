@@ -1,0 +1,19 @@
+name: Frontend syntax check
+on:
+  push:
+    branches: [main, frontend-fixes]
+  pull_request:
+    branches: [main]
+jobs:
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check config.js
+          node --check sw.js
