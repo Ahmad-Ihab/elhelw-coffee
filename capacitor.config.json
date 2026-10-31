@@ -1,0 +1,8 @@
+{
+  "appId": "com.elhelwcoffee.app",
+  "appName": "ELHELW COFFEE",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
