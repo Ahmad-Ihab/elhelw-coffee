@@ -1,0 +1,22 @@
+{
+  "name": "Elhelw Coffee",
+  "short_name": "Elhelw Coffee",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7f3ee",
+  "theme_color": "#30251f",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "./assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
