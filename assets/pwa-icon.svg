@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<rect width="512" height="512" rx="96" fill="#30251f"/>
+<circle cx="256" cy="256" r="194" fill="#f7f3ee" opacity=".08"/>
+<path d="M145 205h190v115a78 78 0 0 1-78 78h-34a78 78 0 0 1-78-78V205Z" fill="#d6a15d"/>
+<path d="M335 230h22a42 42 0 0 1 0 84h-22" fill="none" stroke="#d6a15d" stroke-width="24"/>
+<path d="M195 165c-18-23 18-30 0-55m65 55c-18-23 18-30 0-55m65 55c-18-23 18-30 0-55" fill="none" stroke="#f7f3ee" stroke-width="13" stroke-linecap="round"/>
+<text x="256" y="445" text-anchor="middle" font-family="Arial,sans-serif" font-size="37" font-weight="700" letter-spacing="3" fill="#f7f3ee">ELHELW</text>
+</svg>

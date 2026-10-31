@@ -2,6 +2,7 @@
   "name": "ELHELW COFFEE",
   "short_name": "ELHELW",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f7f3ee",
   "theme_color": "#30251f",
@@ -9,9 +10,9 @@
   "dir": "rtl",
   "icons": [
     {
-      "src": "./assets/app-icon.jpg",
-      "sizes": "128x128",
-      "type": "image/jpeg",
+      "src": "./assets/pwa-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
       "purpose": "any"
     }
   ]
