@@ -173,12 +173,14 @@
       form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form);const kg=update();if(!Number.isFinite(kg)||kg<=0)return toast("أدخل أعداد أكياس صحيحة");try{await rpc("record_sample_bags",{p_cafe_id:f.get("cafe_id"),p_product_id:f.get("product_id"),p_bags:readBags(form,"bags_"),p_feedback:f.get("feedback")||null});toast("تم تسجيل العينة وخصم "+kg.toFixed(3)+" كجم");render()}catch(x){fail(x)}}};
   }
   async function returnsPage(){
-    const [rs,refunds,items,inv,ds,ps]=await Promise.all([
+    const [rs,refunds,items,inv,ds,ps,qmov]=await Promise.all([
       rows("sales_returns"),rows("sales_return_refunds"),rows("sales_return_items"),
-      rows("sales_invoices"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor]),rows("products")
+      rows("sales_invoices"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor]),rows("products"),rows("return_quarantine_movements")
     ]);
     const dn=Object.fromEntries(ds.map(x=>[x.id,x.name])),pn=Object.fromEntries(ps.map(x=>[x.id,x.name]));
     const refundByReturn=Object.fromEntries(refunds.map(x=>[x.return_id,x]));
+    const remainingKg=(item)=>{const ms=qmov.filter(m=>m.return_item_id===item.id);const received=ms.filter(m=>m.movement_type==="received").reduce((a,m)=>a+Number(m.quantity),0);const done=ms.filter(m=>["released_to_company","released_to_distributor","damaged"].includes(m.movement_type)).reduce((a,m)=>a+Number(m.quantity),0);return Math.max(0,received-done)};
+
     const body=rs.map(r=>{const rf=refundByReturn[r.id];return `<tr><td>#${r.return_number}</td><td>${money(items.filter(i=>i.return_id===r.id).reduce((a,i)=>a+Number(i.refund_amount),0))}</td><td>${esc(r.inspection_status)}</td><td>${rf?(rf.delivered_at?"تم التسليم":rf.funded_at?"تم التمويل":"بانتظار التمويل"):"-"}</td><td>${profile.role==="admin"&&!rf?`<button data-allocate="${r.id}" class="secondary">تخصيص مبلغ الرد</button>`: ""}${profile.role==="admin"&&rf&&!rf.funded_at?`<button data-fund="${rf.id}" class="primary">تأكيد التمويل</button>`: ""}${profile.role==="admin"&&rf&&rf.funded_at&&!rf.delivered_at?`<button data-refund-delivered="${rf.id}" class="primary">تأكيد التسليم</button>`:""}</td></tr>`}).join("");
     setContent(section("المرتجعات",'<button id="new-return" class="primary">تسجيل مرتجع</button>')+table(["رقم المرتجع","قيمة الاسترداد","الفحص","حالة رد المبلغ","إجراء"],body)+
       (profile.role==="admin"?section("فحص المرتجعات",""):"")+
@@ -228,7 +230,7 @@
         '<div id="return-destination-wrap" class="hidden">'+selectField("الموزع المستلم","destination_distributor_id",destinationOptions)+'</div>'+
         (item.bag_counts
           ? bagFields("settle_")+'<p class="hint">التسوية تتم بأعداد الأكياس حسب المقاس، وليس بالوزن التقريبي.</p>'
-          : field("الكمية التي ستتم تسويتها (كجم)","quantity","number",`min="0.001" max="${Number(item.quantity)}" step="0.001" value="${Number(item.quantity)}" required`)+
+          : field("الكمية المتبقية للتسوية (كجم)","quantity","number",`min="0.001" max="${remainingKg(item)}" step="0.001" value="${remainingKg(item)}" required`)+
             '<p class="hint">الكمية المتاحة في هذا البند: '+qty(item.quantity)+' كجم</p>')
       ,"تأكيد التسوية"));
       const form=$("return-settlement-form");
@@ -247,7 +249,7 @@
         e.preventDefault();const fd=new FormData(form);
         const bags=item.bag_counts?readBags(form,"settle_"):null;
         const amount=bags?bagsKg(bags):Number(fd.get("quantity"));
-        if(!Number.isFinite(amount)||amount<=0||amount>Number(item.quantity)|| (bags&&Object.values(bags).some(n=>!Number.isInteger(n)||n<0)))return toast("أدخل أعداد أكياس صحيحة لا تتجاوز المرتجع");
+        if(!Number.isFinite(amount)||amount<=0||amount>remainingKg(item)|| (bags&&Object.values(bags).some(n=>!Number.isInteger(n)||n<0)))return toast("أدخل أعداد أكياس صحيحة لا تتجاوز المرتجع");
         const disposition=fd.get("disposition");
         const destination=disposition==="released_to_distributor"?fd.get("destination_distributor_id"):null;
         if(disposition==="released_to_distributor"&&!destination)return toast("اختر الموزع المستلم");
