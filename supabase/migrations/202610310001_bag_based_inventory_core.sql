@@ -47,5 +47,4 @@ BEGIN
  END LOOP; RETURN v_result;
 END; $$;
 
--- Bag-aware receiving, ordering and sampling RPCs are SECURITY DEFINER and validate roles/ownership server-side.
--- Their implementations and the bag-aware deliver_order replacement are deployed in this migration's live database.
+-- Bag-aware RPC definitions are captured in the follow-up migration 202611010001_complete_bag_inventory_rpcs.sql.
