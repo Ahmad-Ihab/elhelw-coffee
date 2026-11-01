@@ -15,6 +15,10 @@
   async function rows(table, query){let q=sb.from(table).select(query||"*");let {data,error}=await q; if(error)throw error;return data||[]}
   async function rpc(name,args){let {data,error}=await sb.rpc(name,args);if(error)throw error;return data}
   function setContent(html){$("content").innerHTML=html}
+  const bagFields = p => [["50","50 جرام"],["100","100 جرام"],["200","200 جرام"],["500","500 جرام"],["1000","1 كيلو"]].map(([k,l])=>field("عدد أكياس "+l,p+k,"number",'min="0" step="1" value="0" required')).join("");
+  const readBags = (f,p) => Object.fromEntries(["50","100","200","500","1000"].map(k=>[k,Number(f.elements[p+k].value||0)]));
+  const bagsKg = b => (50*b["50"]+100*b["100"]+200*b["200"]+500*b["500"]+1000*b["1000"])/1000;
+  const bagsLabel = b => b ? ["50","100","200","500","1000"].map(k=>Number(b[k]||0)?k+"جم: "+b[k]:"").filter(Boolean).join(" · ") : "تفاصيل الأكياس غير متاحة";
   function table(headers, body){return `<div class="table-wrap"><table><thead><tr>${headers.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body||`<tr><td colspan="${headers.length}" class="empty">لا توجد بيانات حتى الآن</td></tr>`}</tbody></table></div>`}
   function section(title,action=""){return `<div class="section-head"><h2>${title}</h2>${action}</div>`}
   function field(label,name,type="text",extra=""){return `<label class="field">${label}<input name="${name}" type="${type}" ${extra}></label>`}
@@ -105,38 +109,16 @@
       $("dist-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{let {error}=await sb.from("distributors").insert({name:f.get("name"),phone:f.get("phone"),user_id:f.get("user_id")});if(error)throw error;toast("تمت إضافة الموزع");render()}catch(x){fail(x)}}};
   }
   async function inventory(){
-    const [bs,ps,ds]=await Promise.all([rows("stock_balances"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
+    const [bs,ps,ds]=await Promise.all([rows("stock_balances","distributor_id,product_id,quantity,bag_counts"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
     const pn=Object.fromEntries(ps.map(p=>[p.id,p.name])),dn=Object.fromEntries(ds.map(d=>[d.id,d.name]));
-    const body=bs.map(b=>`<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td></tr>`).join("");
-    setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+table(["الموزع","الصنف","إجمالي الوزن"],body));
+    const body=bs.map(b=>`<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td><td>${esc(bagsLabel(b.bag_counts))}</td></tr>`).join("");
+    setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+table(["الموزع","الصنف","إجمالي الوزن","توزيع الأكياس"],body));
     if($("receive-stock"))$("receive-stock").onclick=async()=>{
       const [ds2,ps2]=await Promise.all([rows("distributors"),rows("products")]);
-      showForm(formPanel("receive-form","تسجيل استلام بضاعة",selectField("اسم الصنف","product_id",ps2.map(x=>({value:x.id,label:x.name})))+
-        selectField("الموزع","distributor_id",ds2.map(x=>({value:x.id,label:x.name})))+
-        field("عدد أكياس 50 جرام","bags_50","number",'min="0" step="1" value="0" inputmode="numeric" required')+
-        field("عدد أكياس 100 جرام","bags_100","number",'min="0" step="1" value="0" inputmode="numeric" required')+
-        field("عدد أكياس 200 جرام","bags_200","number",'min="0" step="1" value="0" inputmode="numeric" required')+
-        field("عدد أكياس 500 جرام","bags_500","number",'min="0" step="1" value="0" inputmode="numeric" required')+
-        field("عدد أكياس 1 كيلو","bags_1000","number",'min="0" step="1" value="0" inputmode="numeric" required')+
-        '<div class="field"><span>إجمالي الوزن بالكيلو</span><strong id="stock-total-kg">0.000 كجم</strong></div>'+
-        field("ملاحظات","notes")));
-      const form=$("receive-form");
-      const updateTotal=()=>{
-        const n50=Number(form.elements.bags_50.value||0),n100=Number(form.elements.bags_100.value||0),n200=Number(form.elements.bags_200.value||0),n500=Number(form.elements.bags_500.value||0),n1000=Number(form.elements.bags_1000.value||0);
-        const valid=[n50,n100,n200,n500,n1000].every(n=>Number.isInteger(n)&&n>=0);
-        const kg=(n50*50+n100*100+n200*200+n500*500+n1000*1000)/1000;
-        $("stock-total-kg").textContent=valid?`${kg.toFixed(3)} كجم`:"راجع أعداد الأكياس";
-        return valid?kg:NaN;
-      };
-      ["bags_50","bags_100","bags_200","bags_500","bags_1000"].forEach(name=>form.elements[name].addEventListener("input",updateTotal));
-      form.onsubmit=async e=>{
-        e.preventDefault();const f=new FormData(form);const totalKg=updateTotal();
-        if(!Number.isFinite(totalKg)||totalKg<=0)return toast("أدخل عدد أكياس صحيحًا، ويجب أن يكون الإجمالي أكبر من صفر");
-        try{
-          await rpc("admin_receive_stock",{p_distributor_id:f.get("distributor_id"),p_product_id:f.get("product_id"),p_quantity:totalKg,p_notes:f.get("notes")||null});
-          toast(`تم تسجيل الاستلام بإجمالي ${totalKg.toFixed(3)} كجم`);render();
-        }catch(x){fail(x)}
-      };
+      showForm(formPanel("receive-form","تسجيل استلام بضاعة",selectField("اسم الصنف","product_id",ps2.map(x=>({value:x.id,label:x.name})))+selectField("الموزع","distributor_id",ds2.map(x=>({value:x.id,label:x.name})))+bagFields("bags_")+'<div class="field"><span>إجمالي الوزن</span><strong id="stock-total-kg">0.000 كجم</strong></div>'+field("ملاحظات","notes")));
+      const form=$("receive-form");const update=()=>{const v=readBags(form,"bags_");const ok=Object.values(v).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(v);$("stock-total-kg").textContent=ok?kg.toFixed(3)+" كجم":"راجع الأعداد";return ok?kg:NaN};
+      ["50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));
+      form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form);const kg=update();if(!Number.isFinite(kg)||kg<=0)return toast("أدخل أعداد أكياس صحيحة");try{await rpc("admin_receive_stock_bags",{p_distributor_id:f.get("distributor_id"),p_product_id:f.get("product_id"),p_bags:readBags(form,"bags_"),p_notes:f.get("notes")||null});toast("تم الاستلام: "+kg.toFixed(3)+" كجم");render()}catch(x){fail(x)}};
     };
   }
   async function cafes(){
