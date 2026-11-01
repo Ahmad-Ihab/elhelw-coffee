@@ -49,10 +49,12 @@
     {"imports":{"@capacitor/core":"https://cdn.jsdelivr.net/npm/@capacitor/core@7.4.3/dist/esm/index.js"}}
   </script>
   <script type="module">
+    // esm.sh bundles the Filesystem plugin's @capacitor/synapse dependency.
+    // jsDelivr's raw ESM entry leaves that bare package specifier unresolved in WebView.
     window.APP_PDF_READY = (async () => {
       const [{ Filesystem, Directory }, { Share }] = await Promise.all([
-        import("https://cdn.jsdelivr.net/npm/@capacitor/filesystem@7.1.4/dist/esm/index.js"),
-        import("https://cdn.jsdelivr.net/npm/@capacitor/share@7.0.2/dist/esm/index.js")
+        import("https://esm.sh/@capacitor/filesystem@7.1.4?external=@capacitor/core"),
+        import("https://esm.sh/@capacitor/share@7.0.2?external=@capacitor/core")
       ]);
       window.APP_FILESYSTEM = { ...Filesystem, Directory };
       window.APP_SHARE = Share;
