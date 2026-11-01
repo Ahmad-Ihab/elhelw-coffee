@@ -45,25 +45,7 @@
     <footer>ELHELW COFFEE · Distributor Management</footer>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script type="importmap">
-    {"imports":{"@capacitor/core":"https://cdn.jsdelivr.net/npm/@capacitor/core@7.4.3/dist/esm/index.js"}}
-  </script>
-  <script type="module">
-    // esm.sh bundles the Filesystem plugin's @capacitor/synapse dependency.
-    // jsDelivr's raw ESM entry leaves that bare package specifier unresolved in WebView.
-    window.APP_PDF_READY = (async () => {
-      const [{ Filesystem, Directory }, { Share }] = await Promise.all([
-        import("https://esm.sh/@capacitor/filesystem@7.1.4?external=@capacitor/core"),
-        import("https://esm.sh/@capacitor/share@7.0.2?external=@capacitor/core")
-      ]);
-      window.APP_FILESYSTEM = { ...Filesystem, Directory };
-      window.APP_SHARE = Share;
-      return true;
-    })().catch(error => {
-      console.error("Capacitor PDF plugins failed to load:", error);
-      throw error;
-    });
-  </script>
+  <script src="./pdf-plugins.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="./config.js"></script>
   <script src="./app.js"></script><script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js"));</script>
