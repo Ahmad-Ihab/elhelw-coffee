@@ -5,7 +5,7 @@
     cfg.SUPABASE_PUBLISHABLE_KEY && !cfg.SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE");
   const $ = (id) => document.getElementById(id);
   let sb, sessionUser, profile, distributor, activeTab = "dashboard";
-  const adminTabs = [["dashboard","الرئيسية"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"]];
+  const adminTabs = [["dashboard","الرئيسية"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["adminTools","أدوات الإدارة"]];
   const distTabs = [["dashboard","الرئيسية"],["inventory","مخزوني"],["cafes","الكافيهات"],["orders","الطلبيات"],["samples","العينات"],["finance","حساباتي"],["returns","المرتجعات"]];
   const money = n => new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:2}).format(Number(n||0));
   const qty = n => `${Number(n||0).toLocaleString("en-US",{maximumFractionDigits:3})}`;
@@ -66,7 +66,21 @@
       if(activeTab==="samples")return samples();
       if(activeTab==="finance")return finance();
       if(activeTab==="returns")return returnsPage();
+      if(activeTab==="adminTools")return adminTools();
     }catch(e){fail(e);setContent(`<div class="panel-card error">${esc(e.message)}</div>`)}
+  }
+  async function adminTools(){
+    if(profile.role!=="admin")return setContent("غير مصرح.");
+    setContent(section("أدوات الإدارة","")+
+      '<div class="panel-card"><h3>تصفير بيانات التشغيل التجريبية</h3><p class="muted">يمسح كل العمليات والبيانات التشغيلية التجريبية، بما فيها الطلبيات والفواتير والتحصيلات والمرتجعات والعينات والمخزون والكافيهات والموزعين التشغيليين.</p><p class="hint">لن يتم حذف حسابات الدخول أو أدوار المستخدمين أو المنتجات والأسعار وقواعد العمولات.</p><button id="reset-demo-data" class="danger">مسح كل العمليات التجريبية</button></div>');
+    $("reset-demo-data").onclick=async()=>{
+      if(!confirm("تحذير نهائي: سيتم حذف كل العمليات والبيانات التشغيلية التجريبية نهائياً. هل تريد المتابعة؟"))return;
+      const typed=prompt('لتأكيد المسح اكتب RESET');
+      if(typed!=="RESET")return toast("تم إلغاء العملية. نص التأكيد غير مطابق.");
+      const btn=$("reset-demo-data");btn.disabled=true;btn.textContent="جارٍ مسح البيانات...";
+      try{await rpc("admin_reset_demo_data",{});toast("تم تصفير بيانات التجربة بنجاح");activeTab="dashboard";renderTabs();await render();}
+      catch(e){btn.disabled=false;btn.textContent="مسح كل العمليات التجريبية";fail(e)}
+    };
   }
   async function dashboard(){
     const [prods,cafes,orders,balances]=await Promise.all([
@@ -299,23 +313,37 @@
       table(["رقم المرتجع","الكافيه","قيمة الاسترداد","التاريخ","PDF"],rsFinance.map(r=>'<tr><td>#'+r.return_number+'</td><td>'+esc(cn[r.cafe_id]?.name||"-")+'</td><td>'+money(returnTotals[r.id]||0)+'</td><td>'+new Date(r.return_date).toLocaleDateString("ar-EG")+'</td><td><button class="secondary" data-print-return="'+r.id+'">تحميل PDF</button></td></tr>').join("")));
     $("add-payment").onclick=async()=>{const cafes=await rows("cafes");showForm(formPanel("payment-form","تسجيل تحصيل",selectField("الكافيه","cafe_id",cafes.map(x=>({value:x.id,label:x.name})))+field("المبلغ","amount","number",'min="0.01" step="0.01"')+selectField("طريقة الدفع","payment_method",["cash","instapay","bank_transfer","other"].map(x=>({value:x,label:x})))+selectField("تم التحصيل بواسطة","received_by",profile.role==="admin"?[{value:"distributor",label:"الموزع"},{value:"company",label:"الشركة"}]:[{value:"distributor",label:"الموزع"}])));$("payment-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{await rpc("record_cafe_payment",{p_cafe_id:f.get("cafe_id"),p_amount:Number(f.get("amount")),p_payment_method:f.get("payment_method"),p_received_by:f.get("received_by")});toast("تم تسجيل التحصيل");render()}catch(x){fail(x)}}};
     const downloadInvoicePdf=async(html,filename)=>{
-      if(typeof html2pdf==="undefined"){toast("مكتبة PDF لم يتم تحميلها. تحقق من اتصال الإنترنت.");return}
-      const host=document.createElement("div");host.innerHTML=html;host.style.cssText="position:fixed;left:-10000px;top:0;width:780px;background:#fff;z-index:-1";document.body.appendChild(host);
+      const buttons=[...$("content").querySelectorAll("[data-print-invoice],[data-print-return]")];
+      buttons.forEach(b=>b.disabled=true);
+      let host;
       try{
-        const worker=html2pdf().set({margin:8, image:{type:"jpeg",quality:.98},html2canvas:{scale:2,useCORS:true,backgroundColor:"#ffffff"},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"}}).from(host.firstElementChild).toPdf();
-        const pdf=await worker.get("pdf");const uri=pdf.output("datauristring");const base64=uri.split(",")[1];
-        if(window.Capacitor?.isNativePlatform?.() && window.APP_FILESYSTEM){
-          const path="ELHELW-COFFEE/"+filename;
-          const saved=await window.APP_FILESYSTEM.writeFile({path,data:base64,directory:window.APP_FILESYSTEM.Directory.Documents,recursive:true});
-          toast("تم حفظ PDF في مجلد Documents/ELHELW-COFFEE");
-          if(window.APP_SHARE){try{await window.APP_SHARE.share({title:filename,url:saved.uri,dialogTitle:"مشاركة أو فتح الفاتورة PDF"})}catch(_){}}
+        if(typeof html2pdf!=="function")throw new Error("مكتبة إنشاء PDF لم يتم تحميلها. تحقق من اتصال الإنترنت ثم أعد المحاولة.");
+        host=document.createElement("div");host.innerHTML=html;
+        host.style.cssText="position:fixed;left:0;top:0;width:780px;background:#fff;z-index:99999;opacity:0;pointer-events:none";
+        document.body.appendChild(host);
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        const worker=html2pdf().set({filename,margin:8,image:{type:"jpeg",quality:.98},html2canvas:{scale:2,useCORS:true,allowTaint:false,backgroundColor:"#ffffff",logging:false,windowWidth:900},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"}}).from(host.firstElementChild).toPdf();
+        const pdf=await worker.get("pdf");
+        if(!pdf||pdf.getNumberOfPages()<1)throw new Error("ملف PDF الناتج فارغ.");
+        if(window.Capacitor?.isNativePlatform?.()){
+          await window.APP_PDF_READY;
+          if(!window.APP_FILESYSTEM?.writeFile)throw new Error("إضافة حفظ الملفات غير جاهزة. أغلق التطبيق وافتحه مجدداً.");
+          const uri=pdf.output("datauristring"),base64=uri.substring(uri.indexOf(",")+1);
+          if(!base64)throw new Error("تعذر تجهيز بيانات ملف PDF.");
+          const saved=await window.APP_FILESYSTEM.writeFile({path:"ELHELW-COFFEE/"+filename,data:base64,directory:window.APP_FILESYSTEM.Directory.Documents,recursive:true});
+          toast("تم حفظ الفاتورة في Documents/ELHELW-COFFEE");
+          if(window.APP_SHARE?.share){try{await window.APP_SHARE.share({title:filename,text:"فاتورة بن الحلو",url:saved.uri,dialogTitle:"مشاركة الفاتورة"})}catch(shareError){console.warn("PDF saved; share sheet unavailable",shareError)}}
         }else{
-          const blob=pdf.output("blob"),url=URL.createObjectURL(blob),a=document.createElement("a");
-          a.href=url;a.download=filename;a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
-          toast("تم تنزيل ملف PDF");
+          const blob=pdf.output("blob");
+          if(!blob||blob.size<100)throw new Error("ملف PDF الناتج غير صالح.");
+          const url=URL.createObjectURL(blob),a=document.createElement("a");
+          a.href=url;a.download=filename;a.target="_blank";a.rel="noopener";
+          document.body.appendChild(a);a.click();a.remove();
+          setTimeout(()=>URL.revokeObjectURL(url),60000);
+          toast("تم تجهيز تنزيل ملف PDF");
         }
-      }catch(err){console.error(err);toast("تعذر حفظ PDF على الجهاز: "+(err?.message||"خطأ غير معروف"))}
-      finally{host.remove()}
+      }catch(err){console.error("Invoice PDF error:",err);toast("فشل تحميل PDF: "+(err?.message||"خطأ غير معروف"))}
+      finally{host?.remove();buttons.forEach(b=>b.disabled=false)}
     };
     $("content").querySelectorAll("[data-print-invoice]").forEach(btn=>btn.onclick=async()=>{const i=inv.find(x=>x.id===btn.dataset.printInvoice),cafe=cn[i.cafe_id]||{},detail=lines.filter(x=>x.invoice_id===i.id);
       const itemRows=detail.map(x=>'<tr><td>'+esc(pn[x.product_id]||"-")+'</td><td>'+(x.bag_counts?esc(bagsLabel(x.bag_counts)):"تفاصيل الأكياس غير متاحة")+'</td><td>'+qty(x.quantity)+' كجم</td><td>'+money(x.unit_price)+'</td><td>'+money(x.line_total)+'</td><td>'+money(x.commission_amount)+'</td><td>'+money(x.company_net)+'</td></tr>').join("");
