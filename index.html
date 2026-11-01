@@ -49,10 +49,18 @@
     {"imports":{"@capacitor/core":"https://cdn.jsdelivr.net/npm/@capacitor/core@7.4.3/dist/esm/index.js"}}
   </script>
   <script type="module">
-    import { Filesystem, Directory } from "https://cdn.jsdelivr.net/npm/@capacitor/filesystem@7.1.4/dist/esm/index.js";
-    import { Share } from "https://cdn.jsdelivr.net/npm/@capacitor/share@7.0.2/dist/esm/index.js";
-    window.APP_FILESYSTEM = { ...Filesystem, Directory };
-    window.APP_SHARE = Share;
+    window.APP_PDF_READY = (async () => {
+      const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+        import("https://cdn.jsdelivr.net/npm/@capacitor/filesystem@7.1.4/dist/esm/index.js"),
+        import("https://cdn.jsdelivr.net/npm/@capacitor/share@7.0.2/dist/esm/index.js")
+      ]);
+      window.APP_FILESYSTEM = { ...Filesystem, Directory };
+      window.APP_SHARE = Share;
+      return true;
+    })().catch(error => {
+      console.error("Capacitor PDF plugins failed to load:", error);
+      throw error;
+    });
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="./config.js"></script>
