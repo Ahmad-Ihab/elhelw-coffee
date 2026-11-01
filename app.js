@@ -188,7 +188,46 @@
     $("content").querySelectorAll("[data-allocate]").forEach(b=>b.onclick=async()=>{try{await rpc("fund_sales_return_refund",{p_return_id:b.dataset.allocate,p_notes:null});toast("تم تخصيص مبلغ رد المرتجع");render()}catch(x){fail(x)}});
     $("content").querySelectorAll("[data-fund]").forEach(b=>b.onclick=async()=>{try{await rpc("confirm_sales_return_refund_funding",{p_refund_id:b.dataset.fund});toast("تم تأكيد تمويل رد المبلغ");render()}catch(x){fail(x)}});
     $("content").querySelectorAll("[data-refund-delivered]").forEach(b=>b.onclick=async()=>{try{await rpc("confirm_sales_return_refund_delivery",{p_refund_id:b.dataset.refundDelivered});toast("تم تأكيد تسليم المبلغ للكافيه");render()}catch(x){fail(x)}});
-    $("content").querySelectorAll("[data-inspect]").forEach(b=>b.onclick=async()=>{const id=b.dataset.inspect;const item=items.find(x=>x.id===id);const disposition=prompt("اكتب: released_to_company أو released_to_distributor أو damaged");if(!["released_to_company","released_to_distributor","damaged"].includes(disposition||""))return;let destination=null;if(disposition==="released_to_distributor"){const choice=prompt("أدخل UUID الموزع المستلم");if(!choice)return;destination=choice}const amount=prompt("الكمية التي ستتم تسويتها (كجم)",String(item.quantity));if(!amount)return;try{await rpc("process_return_quarantine",{p_return_item_id:id,p_quantity:Number(amount),p_disposition:disposition,p_destination_distributor_id:destination,p_notes:null});toast("تمت تسوية كمية المرتجع");render()}catch(x){fail(x)}});
+    $("content").querySelectorAll("[data-inspect]").forEach(b=>b.onclick=()=>{
+      const id=b.dataset.inspect;const item=items.find(x=>x.id===id);if(!item)return;
+      const activeDistributors=ds.filter(d=>d.active!==false);
+      const destinationOptions=activeDistributors.map(d=>({value:d.id,label:d.name}));
+      showForm(formPanel("return-settlement-form","تسوية مخزون المرتجع", 
+        selectField("مصير البضاعة","disposition",[
+          {value:"released_to_company",label:"إرجاع إلى مخزون الشركة"},
+          {value:"released_to_distributor",label:"تسليم إلى موزع آخر"},
+          {value:"damaged",label:"بضاعة تالفة"}
+        ])+
+        '<div id="return-destination-wrap" class="hidden">'+selectField("الموزع المستلم","destination_distributor_id",destinationOptions)+'</div>'+
+        field("الكمية التي ستتم تسويتها (كجم)","quantity","number",`min="0.001" max="${Number(item.quantity)}" step="0.001" value="${Number(item.quantity)}" required`)+
+        '<p class="hint">الكمية المتاحة في هذا البند: '+qty(item.quantity)+' كجم</p>'
+      ,"تأكيد التسوية"));
+      const form=$("return-settlement-form");
+      const dispositionSelect=form.elements.disposition;
+      const destinationWrap=$("return-destination-wrap");
+      const destinationSelect=form.elements.destination_distributor_id;
+      const updateDestination=()=>{
+        const needsDistributor=dispositionSelect.value==="released_to_distributor";
+        destinationWrap.classList.toggle("hidden",!needsDistributor);
+        destinationSelect.required=needsDistributor;
+        if(!needsDistributor)destinationSelect.value="";
+      };
+      dispositionSelect.addEventListener("change",updateDestination);
+      updateDestination();
+      form.onsubmit=async e=>{
+        e.preventDefault();const fd=new FormData(form);const amount=Number(fd.get("quantity"));
+        if(!Number.isFinite(amount)||amount<=0||amount>Number(item.quantity))return toast("أدخل كمية صحيحة لا تتجاوز الكمية المرتجعة");
+        const disposition=fd.get("disposition");
+        const destination=disposition==="released_to_distributor"?fd.get("destination_distributor_id"):null;
+        if(disposition==="released_to_distributor"&&!destination)return toast("اختر الموزع المستلم");
+        const submit=form.querySelector('button[type="submit"],button:not([type])');
+        if(submit){submit.disabled=true;submit.textContent="جارٍ تنفيذ التسوية...";}
+        try{
+          await rpc("process_return_quarantine",{p_return_item_id:id,p_quantity:amount,p_disposition:disposition,p_destination_distributor_id:destination,p_notes:null});
+          toast("تمت تسوية كمية المرتجع");render();
+        }catch(x){if(submit){submit.disabled=false;submit.textContent="تأكيد التسوية";}fail(x)}
+      };
+    });
   }
   async function finance(){
     const [inv,pay,rem]=await Promise.all([rows("sales_invoices"),rows("cafe_payments"),profile.role==="admin"?rows("distributor_remittances"):Promise.resolve([])]);
