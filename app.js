@@ -278,11 +278,14 @@
     });
   }
   async function finance(){
-    const [inv,pay,rem,cs,ds,ps,lines,rsFinance,returnLinesFinance]=await Promise.all([rows("sales_invoices"),rows("cafe_payments"),profile.role==="admin"?rows("distributor_remittances"):Promise.resolve([]),rows("cafes"),rows("distributors"),rows("products"),rows("sales_invoice_items"),rows("sales_returns"),rows("sales_return_items")]);
+    const [inv,pay,rem,cs,ds,ps,lines,rsFinance,returnLinesFinance,refundRecords]=await Promise.all([rows("sales_invoices"),rows("cafe_payments"),profile.role==="admin"?rows("distributor_remittances"):Promise.resolve([]),rows("cafes"),rows("distributors"),rows("products"),rows("sales_invoice_items"),rows("sales_returns"),rows("sales_return_items"),profile.role==="admin"?rows("sales_return_refunds"):Promise.resolve([])]);
     const returnTotals=Object.fromEntries(rsFinance.map(r=>[r.id,returnLinesFinance.filter(x=>x.return_id===r.id).reduce((a,x)=>a+Number(x.refund_amount||0),0)]));
     const sales=inv.reduce((a,x)=>a+Number(x.total_amount),0),paid=pay.reduce((a,x)=>a+Number(x.amount),0);
+    const grossRemitted=rem.reduce((a,x)=>a+Number(x.amount),0);
+    const companyRefundOutflow=refundRecords.filter(x=>x.funded_at).reduce((a,x)=>a+Number(x.company_funded_amount||0),0);
+    const netCompanyRemittances=grossRemitted-companyRefundOutflow;
     const cn=Object.fromEntries(cs.map(x=>[x.id,x])),dn=Object.fromEntries(ds.map(x=>[x.id,x.name])),pn=Object.fromEntries(ps.map(x=>[x.id,x.name]));
-    setContent('<div class="cards"><div class="stat"><span>إجمالي الفواتير</span><strong>'+money(sales)+'</strong></div><div class="stat"><span>إجمالي تحصيلات الكافيهات</span><strong>'+money(paid)+'</strong></div><div class="stat"><span>عدد الفواتير</span><strong>'+inv.length+'</strong></div><div class="stat"><span>توريدات الشركة</span><strong>'+money(rem.reduce((a,x)=>a+Number(x.amount),0))+'</strong></div></div>'+
+    setContent('<div class="cards"><div class="stat"><span>إجمالي فواتير البيع</span><strong>'+money(sales)+'</strong></div><div class="stat"><span>تحصيلات الكافيهات</span><strong>'+money(paid)+'</strong></div><div class="stat"><span>عدد الفواتير</span><strong>'+inv.length+'</strong></div><div class="stat"><span>توريدات الشركة الإجمالية</span><strong>'+money(grossRemitted)+'</strong></div><div class="stat"><span>تمويل رد المرتجعات</span><strong>'+money(companyRefundOutflow)+'</strong></div><div class="stat"><span>صافي توريدات الشركة بعد المرتجعات</span><strong>'+money(netCompanyRemittances)+'</strong></div></div>'+
       section("فواتير البيع",'<button id="add-payment" class="primary">تسجيل تحصيل كافيه</button>')+
       table(["رقم الفاتورة","الكافيه","الإجمالي","عمولة الموزع","صافي الشركة","التاريخ","PDF"],inv.map(i=>'<tr><td>#'+i.invoice_number+'</td><td>'+esc(cn[i.cafe_id]?.name||"-")+'</td><td>'+money(i.total_amount)+'</td><td>'+money(i.total_commission)+'</td><td>'+money(i.company_net)+'</td><td>'+new Date(i.invoice_date).toLocaleDateString("ar-EG")+'</td><td><button class="secondary" data-print-invoice="'+i.id+'">تحميل PDF</button></td></tr>').join(""))+
       section("فواتير المرتجعات","")+
@@ -291,8 +294,21 @@
     const downloadInvoicePdf=async(html,filename)=>{
       if(typeof html2pdf==="undefined"){toast("مكتبة PDF لم يتم تحميلها. تحقق من اتصال الإنترنت.");return}
       const host=document.createElement("div");host.innerHTML=html;host.style.cssText="position:fixed;left:-10000px;top:0;width:780px;background:#fff;z-index:-1";document.body.appendChild(host);
-      try{await html2pdf().set({margin:8,filename, image:{type:"jpeg",quality:.98},html2canvas:{scale:2,useCORS:true,backgroundColor:"#ffffff"},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"}}).from(host.firstElementChild).save();toast("تم تنزيل ملف PDF")}
-      catch(err){fail(err)}finally{host.remove()}
+      try{
+        const worker=html2pdf().set({margin:8, image:{type:"jpeg",quality:.98},html2canvas:{scale:2,useCORS:true,backgroundColor:"#ffffff"},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"}}).from(host.firstElementChild).toPdf();
+        const pdf=await worker.get("pdf");const uri=pdf.output("datauristring");const base64=uri.split(",")[1];
+        if(window.Capacitor?.isNativePlatform?.() && window.APP_FILESYSTEM){
+          const path="ELHELW-COFFEE/"+filename;
+          const saved=await window.APP_FILESYSTEM.writeFile({path,data:base64,directory:window.APP_FILESYSTEM.Directory.Documents,recursive:true});
+          toast("تم حفظ PDF في مجلد Documents/ELHELW-COFFEE");
+          if(window.APP_SHARE){try{await window.APP_SHARE.share({title:filename,url:saved.uri,dialogTitle:"مشاركة أو فتح الفاتورة PDF"})}catch(_){}}
+        }else{
+          const blob=pdf.output("blob"),url=URL.createObjectURL(blob),a=document.createElement("a");
+          a.href=url;a.download=filename;a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+          toast("تم تنزيل ملف PDF");
+        }
+      }catch(err){console.error(err);toast("تعذر حفظ PDF على الجهاز: "+(err?.message||"خطأ غير معروف"))}
+      finally{host.remove()}
     };
     $("content").querySelectorAll("[data-print-invoice]").forEach(btn=>btn.onclick=async()=>{const i=inv.find(x=>x.id===btn.dataset.printInvoice),cafe=cn[i.cafe_id]||{},detail=lines.filter(x=>x.invoice_id===i.id);
       const itemRows=detail.map(x=>'<tr><td>'+esc(pn[x.product_id]||"-")+'</td><td>'+(x.bag_counts?esc(bagsLabel(x.bag_counts)):"تفاصيل الأكياس غير متاحة")+'</td><td>'+qty(x.quantity)+' كجم</td><td>'+money(x.unit_price)+'</td><td>'+money(x.line_total)+'</td><td>'+money(x.commission_amount)+'</td><td>'+money(x.company_net)+'</td></tr>').join("");
