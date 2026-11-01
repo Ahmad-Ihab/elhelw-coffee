@@ -176,9 +176,28 @@
       const form=$("return-form");
       form.insertAdjacentHTML("beforeend",'<div id="return-lines" class="form-grid"></div>');
       form.querySelector('[name="invoice_id"]').onchange=async e=>{
-        try{const lines=await rows("sales_invoice_items");const selected=lines.filter(x=>x.invoice_id===e.target.value);$("return-lines").innerHTML=selected.map((x,i)=>`<label class="field">${esc(pn[x.product_id]||"صنف")} · مباع ${qty(x.quantity)} كجم<input type="number" min="0" max="${x.quantity}" step="0.001" name="return_qty_${x.id}" placeholder="كمية المرتجع"></label>`).join("");form.dataset.lineIds=selected.map(x=>x.id).join(",")}catch(x){fail(x)}
+        try{
+          const lines=await rows("sales_invoice_items");
+          const selected=lines.filter(x=>x.invoice_id===e.target.value);
+          $("return-lines").innerHTML=selected.map(x=>x.bag_counts
+            ? `<div class="field"><strong>${esc(pn[x.product_id]||"صنف")} · مباع ${qty(x.quantity)} كجم</strong><div class="form-grid">${bagFields("return_"+x.id+"_")}</div><small>أدخل أعداد الأكياس المرتجعة بكل مقاس.</small></div>`
+            : `<label class="field">${esc(pn[x.product_id]||"صنف")} · مباع ${qty(x.quantity)} كجم<input type="number" min="0" max="${x.quantity}" step="0.001" name="return_qty_${x.id}" placeholder="كمية المرتجع بالكجم"></label>`
+          ).join("");
+          form.dataset.lineIds=selected.map(x=>x.id).join(",");
+          form.dataset.bagLineIds=selected.filter(x=>x.bag_counts).map(x=>x.id).join(",");
+        }catch(x){fail(x)}
       };
-      form.onsubmit=async e=>{e.preventDefault();const fd=new FormData(form);const ids=(form.dataset.lineIds||"").split(",").filter(Boolean);const payload=ids.map(id=>({invoice_item_id:id,quantity:Number(fd.get("return_qty_"+id)||0)})).filter(x=>x.quantity>0);if(!payload.length)return toast("حدد كمية مرتجعة واحدة على الأقل");try{const returnId=await rpc("record_sales_return",{p_invoice_id:fd.get("invoice_id"),p_items:payload,p_reason:fd.get("reason")||null,p_notes:fd.get("notes")||null});toast(profile.role==="admin"?"تم تسجيل المرتجع":"تم تسجيل المرتجع وإرساله للإدارة لتخصيص رد المبلغ");render()}catch(x){fail(x)}};
+      form.onsubmit=async e=>{
+        e.preventDefault();const fd=new FormData(form);
+        const ids=(form.dataset.lineIds||"").split(",").filter(Boolean);
+        const bagIds=new Set((form.dataset.bagLineIds||"").split(",").filter(Boolean));
+        const payload=ids.map(id=>bagIds.has(id)
+          ? {invoice_item_id:id,bag_counts:readBags(form,"return_"+id+"_")}
+          : {invoice_item_id:id,quantity:Number(fd.get("return_qty_"+id)||0)}
+        ).filter(x=>x.bag_counts?bagsKg(x.bag_counts)>0:x.quantity>0);
+        if(!payload.length)return toast("حدد كمية مرتجعة واحدة على الأقل");
+        try{await rpc("record_sales_return",{p_invoice_id:fd.get("invoice_id"),p_items:payload,p_reason:fd.get("reason")||null,p_notes:fd.get("notes")||null});toast(profile.role==="admin"?"تم تسجيل المرتجع":"تم تسجيل المرتجع وإرساله للإدارة لتخصيص رد المبلغ");render()}catch(x){fail(x)}
+      };
     };
     $("content").querySelectorAll("[data-allocate]").forEach(b=>b.onclick=async()=>{try{await rpc("fund_sales_return_refund",{p_return_id:b.dataset.allocate,p_notes:null});toast("تم تخصيص مبلغ رد المرتجع");render()}catch(x){fail(x)}});
     $("content").querySelectorAll("[data-fund]").forEach(b=>b.onclick=async()=>{try{await rpc("confirm_sales_return_refund_funding",{p_refund_id:b.dataset.fund});toast("تم تأكيد تمويل رد المبلغ");render()}catch(x){fail(x)}});
@@ -194,8 +213,10 @@
           {value:"damaged",label:"بضاعة تالفة"}
         ])+
         '<div id="return-destination-wrap" class="hidden">'+selectField("الموزع المستلم","destination_distributor_id",destinationOptions)+'</div>'+
-        field("الكمية التي ستتم تسويتها (كجم)","quantity","number",`min="0.001" max="${Number(item.quantity)}" step="0.001" value="${Number(item.quantity)}" required`)+
-        '<p class="hint">الكمية المتاحة في هذا البند: '+qty(item.quantity)+' كجم</p>'
+        (item.bag_counts
+          ? bagFields("settle_")+'<p class="hint">التسوية تتم بأعداد الأكياس حسب المقاس، وليس بالوزن التقريبي.</p>'
+          : field("الكمية التي ستتم تسويتها (كجم)","quantity","number",`min="0.001" max="${Number(item.quantity)}" step="0.001" value="${Number(item.quantity)}" required`)+
+            '<p class="hint">الكمية المتاحة في هذا البند: '+qty(item.quantity)+' كجم</p>')
       ,"تأكيد التسوية"));
       const form=$("return-settlement-form");
       const dispositionSelect=form.elements.disposition;
@@ -210,15 +231,18 @@
       dispositionSelect.addEventListener("change",updateDestination);
       updateDestination();
       form.onsubmit=async e=>{
-        e.preventDefault();const fd=new FormData(form);const amount=Number(fd.get("quantity"));
-        if(!Number.isFinite(amount)||amount<=0||amount>Number(item.quantity))return toast("أدخل كمية صحيحة لا تتجاوز الكمية المرتجعة");
+        e.preventDefault();const fd=new FormData(form);
+        const bags=item.bag_counts?readBags(form,"settle_"):null;
+        const amount=bags?bagsKg(bags):Number(fd.get("quantity"));
+        if(!Number.isFinite(amount)||amount<=0||amount>Number(item.quantity)|| (bags&&Object.values(bags).some(n=>!Number.isInteger(n)||n<0)))return toast("أدخل أعداد أكياس صحيحة لا تتجاوز المرتجع");
         const disposition=fd.get("disposition");
         const destination=disposition==="released_to_distributor"?fd.get("destination_distributor_id"):null;
         if(disposition==="released_to_distributor"&&!destination)return toast("اختر الموزع المستلم");
         const submit=form.querySelector('button[type="submit"],button:not([type])');
         if(submit){submit.disabled=true;submit.textContent="جارٍ تنفيذ التسوية...";}
         try{
-          await rpc("process_return_quarantine",{p_return_item_id:id,p_quantity:amount,p_disposition:disposition,p_destination_distributor_id:destination,p_notes:null});
+          if(bags) await rpc("process_return_quarantine_bags",{p_return_item_id:id,p_bags:bags,p_disposition:disposition,p_destination_distributor_id:destination,p_notes:null});
+          else await rpc("process_return_quarantine",{p_return_item_id:id,p_quantity:amount,p_disposition:disposition,p_destination_distributor_id:destination,p_notes:null});
           toast("تمت تسوية كمية المرتجع");render();
         }catch(x){if(submit){submit.disabled=false;submit.textContent="تأكيد التسوية";}fail(x)}
       };
