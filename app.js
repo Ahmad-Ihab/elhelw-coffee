@@ -86,10 +86,18 @@
     if(profile.role!=="admin")return setContent("غير مصرح.");
     const [ps,prices]=await Promise.all([rows("products"),rows("product_prices","product_id,price,effective_from")]);
     const latest={};prices.forEach(p=>{if(!latest[p.product_id]||new Date(p.effective_from)>new Date(latest[p.product_id].effective_from))latest[p.product_id]=p});
-    const body=ps.map(p=>`<tr><td>${esc(p.name)}</td><td>${p.active?"نشط":"موقوف"}</td><td>${money(latest[p.id]?.price)}</td></tr>`).join("");
-    setContent(section("المنتجات والأسعار",'<button id="add-product" class="primary">إضافة منتج</button>')+table(["المنتج","الحالة","السعر الحالي / كجم"],body));
+    const body=ps.map(p=>"<tr><td>"+esc(p.name)+"</td><td>"+(p.active?"نشط":"موقوف")+"</td><td>"+money(latest[p.id]?.price)+"</td><td><button class='secondary' data-edit-product='"+p.id+"'>تعديل</button></td></tr>").join("");
+    setContent(section("المنتجات والأسعار",'<button id="add-product" class="primary">إضافة منتج</button>')+table(["المنتج","الحالة","السعر الحالي / كجم","إدارة"],body));
     $("add-product").onclick=()=>{showForm(formPanel("product-form","منتج جديد",field("اسم المنتج","name")+field("سعر البيع / كجم","price","number",'step="0.01" min="0" required')+field("تكلفة المنتج / كجم","cost_per_unit","number",'step="0.01" min="0" required')));
-      $("product-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{let {data,error}=await sb.from("products").insert({name:f.get("name"),cost_per_unit:Number(f.get("cost_per_unit"))}).select().single();if(error)throw error;let r=await sb.from("product_prices").insert({product_id:data.id,price:Number(f.get("price"))});if(r.error){await sb.from("products").delete().eq("id",data.id);throw r.error}toast("تمت إضافة المنتج");render()}catch(x){fail(x)}}};
+      $("product-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{let {data,error}=await sb.from("products").insert({name:String(f.get("name")).trim(),cost_per_unit:Number(f.get("cost_per_unit"))}).select().single();if(error)throw error;let r=await sb.from("product_prices").insert({product_id:data.id,price:Number(f.get("price"))});if(r.error)throw r.error;toast("تمت إضافة المنتج");render()}catch(x){fail(x)}}};
+    $("content").querySelectorAll("[data-edit-product]").forEach(btn=>btn.onclick=()=>{const p=ps.find(x=>x.id===btn.dataset.editProduct),price=latest[p.id]?.price??0;
+      showForm(formPanel("product-edit-form","تعديل بيانات الصنف",field("اسم الصنف","name")+field("تكلفة الكيلو","cost_per_unit","number",'step="0.01" min="0" required')+field("سعر البيع / كجم","price","number",'step="0.01" min="0" required')+selectField("الحالة","active",[{value:"true",label:"نشط"},{value:"false",label:"موقوف"}])));
+      const form=$("product-edit-form");form.elements.name.value=p.name;form.elements.cost_per_unit.value=p.cost_per_unit;form.elements.price.value=price;form.elements.active.value=String(p.active);
+      form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);try{const {error}=await sb.from("products").update({name:String(d.get("name")).trim(),cost_per_unit:Number(d.get("cost_per_unit")),active:d.get("active")==="true"}).eq("id",p.id);if(error)throw error;
+        if(Number(d.get("price"))!==Number(price)){const pr=await sb.from("product_prices").insert({product_id:p.id,price:Number(d.get("price"))});if(pr.error)throw pr.error}
+        toast("تم تحديث الصنف. الفواتير القديمة لم تتغير.");render();
+      }catch(x){fail(x)}};
+    });
   }
   async function commissions(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
@@ -103,20 +111,25 @@
   async function distributors(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
     const ds=await rows("distributors");
-    const body=ds.map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.phone||"-")}</td><td>${d.active?"نشط":"موقوف"}</td></tr>`).join("");
-    setContent(section("الموزعون",'<button id="add-dist" class="primary">إضافة موزع</button>')+table(["الاسم","الهاتف","الحالة"],body)+`<p class="hint">إنشاء حساب الدخول يتم من Supabase Authentication ثم ربطه بملف profiles وسجل distributors وفق تعليمات الإعداد.</p>`);
-    $("add-dist").onclick=()=>{showForm(formPanel("dist-form","إضافة سجل موزع",field("الاسم","name")+field("رقم الهاتف","phone")+field("معرّف المستخدم من Authentication","user_id")));
-      $("dist-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{let {error}=await sb.from("distributors").insert({name:f.get("name"),phone:f.get("phone"),user_id:f.get("user_id")});if(error)throw error;toast("تمت إضافة الموزع");render()}catch(x){fail(x)}}};
+    const body=ds.map(d=>"<tr><td>"+esc(d.name)+"</td><td>"+esc(d.phone||"-")+"</td><td>"+(d.active?"نشط":"موقوف")+"</td></tr>").join("");
+    setContent(section("الموزعون",'<button id="add-dist" class="primary">إضافة موزع / حساب إداري</button>')+table(["الاسم","الهاتف","الحالة"],body));
+    $("add-dist").onclick=()=>{showForm(formPanel("account-form","إنشاء حساب جديد",field("الاسم بالكامل","full_name")+field("البريد الإلكتروني","email","email")+field("كلمة المرور","password","password",'minlength="8" required')+selectField("نوع الحساب","role",[{value:"distributor",label:"موزع"},{value:"admin",label:"مدير"}])+field("رقم الهاتف (للموزع)","phone")));
+      const form=$("account-form");form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),submit=form.querySelector("button");submit.disabled=true;
+        try{const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error("انتهت الجلسة. سجل الدخول مرة أخرى.");
+          const response=await fetch(cfg.SUPABASE_URL+"/functions/v1/admin-create-user",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":cfg.SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({full_name:String(d.get("full_name")).trim(),email:String(d.get("email")).trim(),password:d.get("password"),role:d.get("role"),phone:String(d.get("phone")||"").trim()})});
+          const result=await response.json();if(!response.ok)throw new Error(result.error||"تعذر إنشاء الحساب");toast("تم إنشاء الحساب وربطه بنجاح");render();
+        }catch(x){fail(x);submit.disabled=false}};
+    };
   }
   async function inventory(){
     const [bs,ps,ds]=await Promise.all([rows("stock_balances","distributor_id,product_id,quantity,bag_counts"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
     const pn=Object.fromEntries(ps.map(p=>[p.id,p.name])),dn=Object.fromEntries(ds.map(d=>[d.id,d.name]));
     const body=bs.map(b=>`<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td><td>${esc(bagsLabel(b.bag_counts))}</td></tr>`).join("");
     setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+table(["الموزع","الصنف","إجمالي الوزن","توزيع الأكياس"],body));
-    if(profile.role==="admin")$("content").querySelector("h2")?.insertAdjacentHTML("afterend",'<button id="adjust-stock" class="secondary">تسوية مخزون بأكياس</button>');
+    if(profile.role==="admin")$("content").querySelector("h2")?.insertAdjacentHTML("afterend",'<button id="adjust-stock" class="secondary">تصحيح رصيد المخزون (زيادة / خصم)</button>');
     if($("adjust-stock"))$("adjust-stock").onclick=async()=>{
       const [dlist,plist]=await Promise.all([rows("distributors"),rows("products")]);
-      showForm(formPanel("adjust-form","تسوية المخزون",selectField("الموزع","distributor_id",dlist.map(x=>({value:x.id,label:x.name})))+selectField("الصنف","product_id",plist.map(x=>({value:x.id,label:x.name})))+selectField("نوع التسوية","direction",[{value:"in",label:"إضافة للمخزون"},{value:"out",label:"خصم من المخزون"}])+bagFields("bags_")+field("سبب التسوية","notes")));
+      showForm(formPanel("adjust-form","تصحيح رصيد المخزون (زيادة / خصم)",selectField("الموزع","distributor_id",dlist.map(x=>({value:x.id,label:x.name})))+selectField("الصنف","product_id",plist.map(x=>({value:x.id,label:x.name})))+selectField("نوع التصحيح","direction",[{value:"out",label:"خصم أكياس من رصيد الموزع"},{value:"in",label:"إضافة أكياس إلى الرصيد"}])+bagFields("bags_")+field("سبب التسوية","notes")));
       const form=$("adjust-form");
       form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);const bags=readBags(form,"bags_");if(bagsKg(bags)<=0||Object.values(bags).some(n=>!Number.isInteger(n)||n<0))return toast("أدخل أعداد أكياس صحيحة");try{await rpc("admin_adjust_stock_bags",{p_distributor_id:d.get("distributor_id"),p_product_id:d.get("product_id"),p_bags:bags,p_direction:d.get("direction"),p_notes:d.get("notes")||null});toast("تم تسجيل حركة التسوية");render()}catch(x){fail(x)}};
     };
@@ -160,12 +173,15 @@
       form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form);const kg=update();if(!Number.isFinite(kg)||kg<=0)return toast("أدخل أعداد أكياس صحيحة");try{await rpc("record_sample_bags",{p_cafe_id:f.get("cafe_id"),p_product_id:f.get("product_id"),p_bags:readBags(form,"bags_"),p_feedback:f.get("feedback")||null});toast("تم تسجيل العينة وخصم "+kg.toFixed(3)+" كجم");render()}catch(x){fail(x)}}};
   }
   async function returnsPage(){
-    const [rs,refunds,items,inv,ds,ps]=await Promise.all([
+    const [rs,refunds,items,inv,ds,ps,qmov]=await Promise.all([
       rows("sales_returns"),rows("sales_return_refunds"),rows("sales_return_items"),
-      rows("sales_invoices"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor]),rows("products")
+      rows("sales_invoices"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor]),rows("products"),rows("return_quarantine_movements")
     ]);
     const dn=Object.fromEntries(ds.map(x=>[x.id,x.name])),pn=Object.fromEntries(ps.map(x=>[x.id,x.name]));
     const refundByReturn=Object.fromEntries(refunds.map(x=>[x.return_id,x]));
+    const remainingKg=(item)=>{const ms=qmov.filter(m=>m.return_item_id===item.id);const received=ms.filter(m=>m.movement_type==="received").reduce((a,m)=>a+Number(m.quantity),0);const done=ms.filter(m=>["released_to_company","released_to_distributor","damaged"].includes(m.movement_type)).reduce((a,m)=>a+Number(m.quantity),0);return Math.max(0,received-done)};
+    const remainingBags=(item)=>{const ms=qmov.filter(m=>m.return_item_id===item.id),keys=["50","100","200","500","1000"],out={};keys.forEach(k=>{const got=ms.filter(m=>m.movement_type==="received").reduce((a,m)=>a+Number(m.bag_counts?.[k]||0),0),used=ms.filter(m=>["released_to_company","released_to_distributor","damaged"].includes(m.movement_type)).reduce((a,m)=>a+Number(m.bag_counts?.[k]||0),0);out[k]=Math.max(0,got-used)});return out};
+
     const body=rs.map(r=>{const rf=refundByReturn[r.id];return `<tr><td>#${r.return_number}</td><td>${money(items.filter(i=>i.return_id===r.id).reduce((a,i)=>a+Number(i.refund_amount),0))}</td><td>${esc(r.inspection_status)}</td><td>${rf?(rf.delivered_at?"تم التسليم":rf.funded_at?"تم التمويل":"بانتظار التمويل"):"-"}</td><td>${profile.role==="admin"&&!rf?`<button data-allocate="${r.id}" class="secondary">تخصيص مبلغ الرد</button>`: ""}${profile.role==="admin"&&rf&&!rf.funded_at?`<button data-fund="${rf.id}" class="primary">تأكيد التمويل</button>`: ""}${profile.role==="admin"&&rf&&rf.funded_at&&!rf.delivered_at?`<button data-refund-delivered="${rf.id}" class="primary">تأكيد التسليم</button>`:""}</td></tr>`}).join("");
     setContent(section("المرتجعات",'<button id="new-return" class="primary">تسجيل مرتجع</button>')+table(["رقم المرتجع","قيمة الاسترداد","الفحص","حالة رد المبلغ","إجراء"],body)+
       (profile.role==="admin"?section("فحص المرتجعات",""):"")+
@@ -215,10 +231,11 @@
         '<div id="return-destination-wrap" class="hidden">'+selectField("الموزع المستلم","destination_distributor_id",destinationOptions)+'</div>'+
         (item.bag_counts
           ? bagFields("settle_")+'<p class="hint">التسوية تتم بأعداد الأكياس حسب المقاس، وليس بالوزن التقريبي.</p>'
-          : field("الكمية التي ستتم تسويتها (كجم)","quantity","number",`min="0.001" max="${Number(item.quantity)}" step="0.001" value="${Number(item.quantity)}" required`)+
+          : field("الكمية المتبقية للتسوية (كجم)","quantity","number",`min="0.001" max="${remainingKg(item)}" step="0.001" value="${remainingKg(item)}" required`)+
             '<p class="hint">الكمية المتاحة في هذا البند: '+qty(item.quantity)+' كجم</p>')
       ,"تأكيد التسوية"));
       const form=$("return-settlement-form");
+      if(item.bag_counts){const left=remainingBags(item);["50","100","200","500","1000"].forEach(k=>{form.elements["settle_"+k].value=left[k]})}
       const dispositionSelect=form.elements.disposition;
       const destinationWrap=$("return-destination-wrap");
       const destinationSelect=form.elements.destination_distributor_id;
@@ -234,7 +251,7 @@
         e.preventDefault();const fd=new FormData(form);
         const bags=item.bag_counts?readBags(form,"settle_"):null;
         const amount=bags?bagsKg(bags):Number(fd.get("quantity"));
-        if(!Number.isFinite(amount)||amount<=0||amount>Number(item.quantity)|| (bags&&Object.values(bags).some(n=>!Number.isInteger(n)||n<0)))return toast("أدخل أعداد أكياس صحيحة لا تتجاوز المرتجع");
+        if(!Number.isFinite(amount)||amount<=0||amount>remainingKg(item)|| (bags&&(Object.values(bags).some(n=>!Number.isInteger(n)||n<0)||["50","100","200","500","1000"].some(k=>bags[k]>remainingBags(item)[k]))))return toast("أدخل أعدادًا لا تتجاوز المتبقي في العزل لكل مقاس");
         const disposition=fd.get("disposition");
         const destination=disposition==="released_to_distributor"?fd.get("destination_distributor_id"):null;
         if(disposition==="released_to_distributor"&&!destination)return toast("اختر الموزع المستلم");
@@ -249,18 +266,24 @@
     });
   }
   async function finance(){
-    const [inv,pay,rem]=await Promise.all([rows("sales_invoices"),rows("cafe_payments"),profile.role==="admin"?rows("distributor_remittances"):Promise.resolve([])]);
+    const [inv,pay,rem,cs,ds,ps,lines]=await Promise.all([rows("sales_invoices"),rows("cafe_payments"),profile.role==="admin"?rows("distributor_remittances"):Promise.resolve([]),rows("cafes"),rows("distributors"),rows("products"),rows("sales_invoice_items")]);
     const sales=inv.reduce((a,x)=>a+Number(x.total_amount),0),paid=pay.reduce((a,x)=>a+Number(x.amount),0);
-    setContent(`<div class="cards"><div class="stat"><span>إجمالي الفواتير</span><strong>${money(sales)}</strong></div><div class="stat"><span>إجمالي تحصيلات الكافيهات</span><strong>${money(paid)}</strong></div><div class="stat"><span>عدد الفواتير</span><strong>${inv.length}</strong></div><div class="stat"><span>توريدات الشركة</span><strong>${money(rem.reduce((a,x)=>a+Number(x.amount),0))}</strong></div></div>
-      ${section("الفواتير",'<button id="add-payment" class="primary">تسجيل تحصيل كافيه</button>')}${table(["رقم الفاتورة","الإجمالي","عمولة الموزع","صافي الشركة","التاريخ"],inv.map(i=>`<tr><td>#${i.invoice_number}</td><td>${money(i.total_amount)}</td><td>${money(i.total_commission)}</td><td>${money(i.company_net)}</td><td>${new Date(i.invoice_date).toLocaleDateString("ar-EG")}</td></tr>`).join(""))}
-      <p class="hint">هذه شاشة ملخص أولية. سيتم استكمال كشوف الحساب التفصيلية وتوزيع الدفعات على الفواتير في مرحلة الحسابات.</p>`);
-    $("add-payment").onclick=async()=>{const cs=await rows("cafes");showForm(formPanel("payment-form","تسجيل تحصيل",selectField("الكافيه","cafe_id",cs.map(x=>({value:x.id,label:x.name})))+field("المبلغ","amount","number",'min="0.01" step="0.01"')+selectField("طريقة الدفع","payment_method",["cash","instapay","bank_transfer","other"].map(x=>({value:x,label:x})))+selectField("تم التحصيل بواسطة","received_by",profile.role==="admin"?[{value:"distributor",label:"الموزع"},{value:"company",label:"الشركة"}]:[{value:"distributor",label:"الموزع"}])));$("payment-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{await rpc("record_cafe_payment",{p_cafe_id:f.get("cafe_id"),p_amount:Number(f.get("amount")),p_payment_method:f.get("payment_method"),p_received_by:f.get("received_by")});toast("تم تسجيل التحصيل");render()}catch(x){fail(x)}}};
+    const cn=Object.fromEntries(cs.map(x=>[x.id,x])),dn=Object.fromEntries(ds.map(x=>[x.id,x.name])),pn=Object.fromEntries(ps.map(x=>[x.id,x.name]));
+    setContent('<div class="cards"><div class="stat"><span>إجمالي الفواتير</span><strong>'+money(sales)+'</strong></div><div class="stat"><span>إجمالي تحصيلات الكافيهات</span><strong>'+money(paid)+'</strong></div><div class="stat"><span>عدد الفواتير</span><strong>'+inv.length+'</strong></div><div class="stat"><span>توريدات الشركة</span><strong>'+money(rem.reduce((a,x)=>a+Number(x.amount),0))+'</strong></div></div>'+
+      section("الفواتير",'<button id="add-payment" class="primary">تسجيل تحصيل كافيه</button>')+
+      table(["رقم الفاتورة","الكافيه","الإجمالي","عمولة الموزع","صافي الشركة","التاريخ","PDF"],inv.map(i=>'<tr><td>#'+i.invoice_number+'</td><td>'+esc(cn[i.cafe_id]?.name||"-")+'</td><td>'+money(i.total_amount)+'</td><td>'+money(i.total_commission)+'</td><td>'+money(i.company_net)+'</td><td>'+new Date(i.invoice_date).toLocaleDateString("ar-EG")+'</td><td><button class="secondary" data-print-invoice="'+i.id+'">طباعة / PDF</button></td></tr>').join(""))+
+      '<p class="hint">من نافذة الطباعة اختر Save as PDF لحفظ نسخة PDF.</p>');
+    $("add-payment").onclick=async()=>{const cafes=await rows("cafes");showForm(formPanel("payment-form","تسجيل تحصيل",selectField("الكافيه","cafe_id",cafes.map(x=>({value:x.id,label:x.name})))+field("المبلغ","amount","number",'min="0.01" step="0.01"')+selectField("طريقة الدفع","payment_method",["cash","instapay","bank_transfer","other"].map(x=>({value:x,label:x})))+selectField("تم التحصيل بواسطة","received_by",profile.role==="admin"?[{value:"distributor",label:"الموزع"},{value:"company",label:"الشركة"}]:[{value:"distributor",label:"الموزع"}])));$("payment-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{await rpc("record_cafe_payment",{p_cafe_id:f.get("cafe_id"),p_amount:Number(f.get("amount")),p_payment_method:f.get("payment_method"),p_received_by:f.get("received_by")});toast("تم تسجيل التحصيل");render()}catch(x){fail(x)}}};
+    $("content").querySelectorAll("[data-print-invoice]").forEach(btn=>btn.onclick=()=>{const i=inv.find(x=>x.id===btn.dataset.printInvoice),cafe=cn[i.cafe_id]||{},detail=lines.filter(x=>x.invoice_id===i.id);
+      const itemRows=detail.map(x=>'<tr><td>'+esc(pn[x.product_id]||"-")+'</td><td>'+(x.bag_counts?esc(bagsLabel(x.bag_counts)):"تفاصيل الأكياس غير متاحة")+'</td><td>'+qty(x.quantity)+' كجم</td><td>'+money(x.unit_price)+'</td><td>'+money(x.line_total)+'</td><td>'+money(x.commission_amount)+'</td><td>'+money(x.company_net)+'</td></tr>').join("");
+      const html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>فاتورة #'+i.invoice_number+'</title><style>body{font-family:Arial,sans-serif;color:#222;margin:28px}h1{color:#603b24}.meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:22px 0;padding:16px;background:#f7f3ef}table{width:100%;border-collapse:collapse;margin:20px 0;font-size:12px}th,td{border:1px solid #ddd;padding:9px;text-align:right}th{background:#eee}.totals{margin-right:auto;width:300px}.totals div{display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #ddd}@media print{body{margin:12mm}}</style></head><body><h1>بن الحلو</h1><p>فاتورة مبيعات</p><div class="meta"><div><b>رقم الفاتورة:</b> #'+i.invoice_number+'</div><div><b>التاريخ:</b> '+new Date(i.invoice_date).toLocaleString("ar-EG")+'</div><div><b>الكافيه:</b> '+esc(cafe.name||"-")+'</div><div><b>رقم الكافيه:</b> '+esc(cafe.phone||"-")+'</div><div><b>العنوان:</b> '+esc(cafe.address||"-")+'</div><div><b>الموزع:</b> '+esc(dn[i.distributor_id]||"-")+'</div></div><table><thead><tr><th>الصنف</th><th>الأكياس</th><th>الوزن</th><th>سعر الكيلو</th><th>الإجمالي</th><th>العمولة</th><th>صافي الشركة</th></tr></thead><tbody>'+itemRows+'</tbody></table><div class="totals"><div><b>إجمالي الفاتورة</b><b>'+money(i.total_amount)+'</b></div><div><span>عمولة الموزع</span><b>'+money(i.total_commission)+'</b></div><div><span>صافي الشركة</span><b>'+money(i.company_net)+'</b></div></div><p style="text-align:center;margin-top:40px">شكراً لثقتكم في بن الحلو</p><script>window.onload=()=>window.print()<\\/script></body></html>';
+      const w=window.open("","_blank");if(!w){toast("اسمح بالنوافذ المنبثقة لطباعة الفاتورة");return}w.document.open();w.document.write(html);w.document.close();
+    });
     if(profile.role==="admin"){
-      const ds=await rows("distributors");
-      $("content").insertAdjacentHTML("afterbegin",`<div class="panel-card"><h3>تسجيل توريد من الموزع للشركة</h3><form id="remit-form" class="form-grid">${selectField("الموزع","distributor_id",ds.map(x=>({value:x.id,label:x.name})))+field("المبلغ","amount","number",'min="0.01" step="0.01" required')+selectField("طريقة الدفع","payment_method",[{value:"cash",label:"نقدي"},{value:"instapay",label:"InstaPay"},{value:"bank_transfer",label:"تحويل بنكي"}])+field("رقم مرجعي","reference")}</form><button id="save-remit" class="primary">حفظ التوريد</button></div>`);
+      $("content").insertAdjacentHTML("afterbegin",'<div class="panel-card"><h3>تسجيل توريد من الموزع للشركة</h3><form id="remit-form" class="form-grid">'+selectField("الموزع","distributor_id",ds.map(x=>({value:x.id,label:x.name})))+field("المبلغ","amount","number",'min="0.01" step="0.01" required')+selectField("طريقة الدفع","payment_method",[{value:"cash",label:"نقدي"},{value:"instapay",label:"InstaPay"},{value:"bank_transfer",label:"تحويل بنكي"}])+field("رقم مرجعي","reference")+'</form><button id="save-remit" class="primary">حفظ التوريد</button></div>');
       $("save-remit").onclick=async()=>{const f=new FormData($("remit-form"));try{await rpc("record_distributor_remittance",{p_distributor_id:f.get("distributor_id"),p_amount:Number(f.get("amount")),p_payment_method:f.get("payment_method"),p_reference:f.get("reference")||null,p_notes:null});toast("تم تسجيل التوريد");render()}catch(x){fail(x)}};
-    } else {
-      $("content").insertAdjacentHTML("afterbegin",`<div class="panel-card"><h3>تسليم تحصيلات الشركة</h3><form id="remit-form" class="form-grid">${field("المبلغ","amount","number",'min="0.01" step="0.01" required')+selectField("طريقة الدفع","payment_method",[{value:"cash",label:"نقدي"},{value:"instapay",label:"InstaPay"},{value:"bank_transfer",label:"تحويل بنكي"}])+field("رقم مرجعي","reference")}</form><button id="save-remit" class="primary">تسجيل التوريد</button></div>`);
+    }else{
+      $("content").insertAdjacentHTML("afterbegin",'<div class="panel-card"><h3>تسليم تحصيلات الشركة</h3><form id="remit-form" class="form-grid">'+field("المبلغ","amount","number",'min="0.01" step="0.01" required')+selectField("طريقة الدفع","payment_method",[{value:"cash",label:"نقدي"},{value:"instapay",label:"InstaPay"},{value:"bank_transfer",label:"تحويل بنكي"}])+field("رقم مرجعي","reference")+'</form><button id="save-remit" class="primary">تسجيل التوريد</button></div>');
       $("save-remit").onclick=async()=>{const f=new FormData($("remit-form"));try{await rpc("record_distributor_remittance",{p_distributor_id:null,p_amount:Number(f.get("amount")),p_payment_method:f.get("payment_method"),p_reference:f.get("reference")||null,p_notes:null});toast("تم تسجيل التوريد");render()}catch(x){fail(x)}};
     }
   }
