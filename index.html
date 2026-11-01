@@ -6,15 +6,15 @@
   <meta name="theme-color" content="#30251f">
   <meta name="description" content="ELHELW COFFEE Distributor Management">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./assets/app-icon.jpg" type="image/jpeg">
-  <link rel="apple-touch-icon" href="./assets/app-icon.jpg">
+  <link rel="icon" href="./assets/icon-512.png" type="image/png">
+  <link rel="apple-touch-icon" href="./assets/icon-512.png">
   <link rel="stylesheet" href="./styles.css">
   <title>ELHELW COFFEE | إدارة التوزيع</title>
 </head>
 <body>
   <div id="app">
     <header class="topbar">
-      <div class="brand"><img class="brand-logo" src="./assets/header-logo.jpg" alt="ELHELW COFFEE"><div><strong>ELHELW COFFEE</strong><small>إدارة التوزيع</small></div></div>
+      <div class="brand"><img class="brand-logo" src="./assets/brand-logo.svg" alt="بن الحلو"><div><small>إدارة التوزيع</small></div></div>
       <div id="user-area" class="user-area"></div>
     </header>
     <main id="main">
@@ -45,6 +45,7 @@
     <footer>ELHELW COFFEE · Distributor Management</footer>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="./config.js"></script>
   <script src="./app.js"></script><script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js"));</script>
 </body>
