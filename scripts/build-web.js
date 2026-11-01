@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const out = path.join(root, "www");
@@ -16,4 +17,16 @@ const assetsSource = path.join(root, "assets");
 const assetsTarget = path.join(out, "assets");
 fs.cpSync(assetsSource, assetsTarget, { recursive: true });
 
-console.log("Web assets prepared in www/");
+// Build Capacitor Filesystem + Share into a local browser bundle.
+// Never fetch these modules at runtime inside Android WebView.
+execFileSync("npx", [
+  "--yes",
+  "esbuild@0.25.5",
+  "scripts/pdf-plugins.js",
+  "--bundle",
+  "--platform=browser",
+  "--format=iife",
+  "--outfile=www/pdf-plugins.js"
+], { cwd: root, stdio: "inherit" });
+
+console.log("Web assets and local Capacitor PDF plugins prepared in www/");
