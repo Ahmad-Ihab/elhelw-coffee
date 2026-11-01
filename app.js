@@ -290,3 +290,4 @@
   $("login-form").onsubmit=async e=>{e.preventDefault();$("login-error").textContent="";let {error}=await sb.auth.signInWithPassword({email:$("email").value,password:$("password").value});if(error){$("login-error").textContent=error.message;return}location.reload()};
   boot().catch(fail);
 })();
+// Android build trigger: invoice/admin/product/stock updates.
