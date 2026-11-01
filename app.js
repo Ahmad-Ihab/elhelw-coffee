@@ -86,10 +86,18 @@
     if(profile.role!=="admin")return setContent("غير مصرح.");
     const [ps,prices]=await Promise.all([rows("products"),rows("product_prices","product_id,price,effective_from")]);
     const latest={};prices.forEach(p=>{if(!latest[p.product_id]||new Date(p.effective_from)>new Date(latest[p.product_id].effective_from))latest[p.product_id]=p});
-    const body=ps.map(p=>`<tr><td>${esc(p.name)}</td><td>${p.active?"نشط":"موقوف"}</td><td>${money(latest[p.id]?.price)}</td></tr>`).join("");
-    setContent(section("المنتجات والأسعار",'<button id="add-product" class="primary">إضافة منتج</button>')+table(["المنتج","الحالة","السعر الحالي / كجم"],body));
+    const body=ps.map(p=>"<tr><td>"+esc(p.name)+"</td><td>"+(p.active?"نشط":"موقوف")+"</td><td>"+money(latest[p.id]?.price)+"</td><td><button class='secondary' data-edit-product='"+p.id+"'>تعديل</button></td></tr>").join("");
+    setContent(section("المنتجات والأسعار",'<button id="add-product" class="primary">إضافة منتج</button>')+table(["المنتج","الحالة","السعر الحالي / كجم","إدارة"],body));
     $("add-product").onclick=()=>{showForm(formPanel("product-form","منتج جديد",field("اسم المنتج","name")+field("سعر البيع / كجم","price","number",'step="0.01" min="0" required')+field("تكلفة المنتج / كجم","cost_per_unit","number",'step="0.01" min="0" required')));
-      $("product-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{let {data,error}=await sb.from("products").insert({name:f.get("name"),cost_per_unit:Number(f.get("cost_per_unit"))}).select().single();if(error)throw error;let r=await sb.from("product_prices").insert({product_id:data.id,price:Number(f.get("price"))});if(r.error){await sb.from("products").delete().eq("id",data.id);throw r.error}toast("تمت إضافة المنتج");render()}catch(x){fail(x)}}};
+      $("product-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{let {data,error}=await sb.from("products").insert({name:String(f.get("name")).trim(),cost_per_unit:Number(f.get("cost_per_unit"))}).select().single();if(error)throw error;let r=await sb.from("product_prices").insert({product_id:data.id,price:Number(f.get("price"))});if(r.error)throw r.error;toast("تمت إضافة المنتج");render()}catch(x){fail(x)}}};
+    $("content").querySelectorAll("[data-edit-product]").forEach(btn=>btn.onclick=()=>{const p=ps.find(x=>x.id===btn.dataset.editProduct),price=latest[p.id]?.price??0;
+      showForm(formPanel("product-edit-form","تعديل بيانات الصنف",field("اسم الصنف","name")+field("تكلفة الكيلو","cost_per_unit","number",'step="0.01" min="0" required')+field("سعر البيع / كجم","price","number",'step="0.01" min="0" required')+selectField("الحالة","active",[{value:"true",label:"نشط"},{value:"false",label:"موقوف"}])));
+      const form=$("product-edit-form");form.elements.name.value=p.name;form.elements.cost_per_unit.value=p.cost_per_unit;form.elements.price.value=price;form.elements.active.value=String(p.active);
+      form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);try{const {error}=await sb.from("products").update({name:String(d.get("name")).trim(),cost_per_unit:Number(d.get("cost_per_unit")),active:d.get("active")==="true"}).eq("id",p.id);if(error)throw error;
+        if(Number(d.get("price"))!==Number(price)){const pr=await sb.from("product_prices").insert({product_id:p.id,price:Number(d.get("price"))});if(pr.error)throw pr.error}
+        toast("تم تحديث الصنف. الفواتير القديمة لم تتغير.");render();
+      }catch(x){fail(x)}};
+    });
   }
   async function commissions(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
@@ -103,20 +111,25 @@
   async function distributors(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
     const ds=await rows("distributors");
-    const body=ds.map(d=>`<tr><td>${esc(d.name)}</td><td>${esc(d.phone||"-")}</td><td>${d.active?"نشط":"موقوف"}</td></tr>`).join("");
-    setContent(section("الموزعون",'<button id="add-dist" class="primary">إضافة موزع</button>')+table(["الاسم","الهاتف","الحالة"],body)+`<p class="hint">إنشاء حساب الدخول يتم من Supabase Authentication ثم ربطه بملف profiles وسجل distributors وفق تعليمات الإعداد.</p>`);
-    $("add-dist").onclick=()=>{showForm(formPanel("dist-form","إضافة سجل موزع",field("الاسم","name")+field("رقم الهاتف","phone")+field("معرّف المستخدم من Authentication","user_id")));
-      $("dist-form").onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);try{let {error}=await sb.from("distributors").insert({name:f.get("name"),phone:f.get("phone"),user_id:f.get("user_id")});if(error)throw error;toast("تمت إضافة الموزع");render()}catch(x){fail(x)}}};
+    const body=ds.map(d=>"<tr><td>"+esc(d.name)+"</td><td>"+esc(d.phone||"-")+"</td><td>"+(d.active?"نشط":"موقوف")+"</td></tr>").join("");
+    setContent(section("الموزعون",'<button id="add-dist" class="primary">إضافة موزع / حساب إداري</button>')+table(["الاسم","الهاتف","الحالة"],body));
+    $("add-dist").onclick=()=>{showForm(formPanel("account-form","إنشاء حساب جديد",field("الاسم بالكامل","full_name")+field("البريد الإلكتروني","email","email")+field("كلمة المرور","password","password",'minlength="8" required')+selectField("نوع الحساب","role",[{value:"distributor",label:"موزع"},{value:"admin",label:"مدير"}])+field("رقم الهاتف (للموزع)","phone")));
+      const form=$("account-form");form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),submit=form.querySelector("button");submit.disabled=true;
+        try{const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error("انتهت الجلسة. سجل الدخول مرة أخرى.");
+          const response=await fetch(cfg.SUPABASE_URL+"/functions/v1/admin-create-user",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":cfg.SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({full_name:String(d.get("full_name")).trim(),email:String(d.get("email")).trim(),password:d.get("password"),role:d.get("role"),phone:String(d.get("phone")||"").trim()})});
+          const result=await response.json();if(!response.ok)throw new Error(result.error||"تعذر إنشاء الحساب");toast("تم إنشاء الحساب وربطه بنجاح");render();
+        }catch(x){fail(x);submit.disabled=false}};
+    };
   }
   async function inventory(){
     const [bs,ps,ds]=await Promise.all([rows("stock_balances","distributor_id,product_id,quantity,bag_counts"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
     const pn=Object.fromEntries(ps.map(p=>[p.id,p.name])),dn=Object.fromEntries(ds.map(d=>[d.id,d.name]));
     const body=bs.map(b=>`<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td><td>${esc(bagsLabel(b.bag_counts))}</td></tr>`).join("");
     setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+table(["الموزع","الصنف","إجمالي الوزن","توزيع الأكياس"],body));
-    if(profile.role==="admin")$("content").querySelector("h2")?.insertAdjacentHTML("afterend",'<button id="adjust-stock" class="secondary">تسوية مخزون بأكياس</button>');
+    if(profile.role==="admin")$("content").querySelector("h2")?.insertAdjacentHTML("afterend",'<button id="adjust-stock" class="secondary">تصحيح رصيد المخزون (زيادة / خصم)</button>');
     if($("adjust-stock"))$("adjust-stock").onclick=async()=>{
       const [dlist,plist]=await Promise.all([rows("distributors"),rows("products")]);
-      showForm(formPanel("adjust-form","تسوية المخزون",selectField("الموزع","distributor_id",dlist.map(x=>({value:x.id,label:x.name})))+selectField("الصنف","product_id",plist.map(x=>({value:x.id,label:x.name})))+selectField("نوع التسوية","direction",[{value:"in",label:"إضافة للمخزون"},{value:"out",label:"خصم من المخزون"}])+bagFields("bags_")+field("سبب التسوية","notes")));
+      showForm(formPanel("adjust-form","تصحيح رصيد المخزون (زيادة / خصم)",selectField("الموزع","distributor_id",dlist.map(x=>({value:x.id,label:x.name})))+selectField("الصنف","product_id",plist.map(x=>({value:x.id,label:x.name})))+selectField("نوع التصحيح","direction",[{value:"out",label:"خصم أكياس من رصيد الموزع"},{value:"in",label:"إضافة أكياس إلى الرصيد"}])+bagFields("bags_")+field("سبب التسوية","notes")));
       const form=$("adjust-form");
       form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);const bags=readBags(form,"bags_");if(bagsKg(bags)<=0||Object.values(bags).some(n=>!Number.isInteger(n)||n<0))return toast("أدخل أعداد أكياس صحيحة");try{await rpc("admin_adjust_stock_bags",{p_distributor_id:d.get("distributor_id"),p_product_id:d.get("product_id"),p_bags:bags,p_direction:d.get("direction"),p_notes:d.get("notes")||null});toast("تم تسجيل حركة التسوية");render()}catch(x){fail(x)}};
     };
