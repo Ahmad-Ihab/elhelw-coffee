@@ -180,6 +180,7 @@
     const dn=Object.fromEntries(ds.map(x=>[x.id,x.name])),pn=Object.fromEntries(ps.map(x=>[x.id,x.name]));
     const refundByReturn=Object.fromEntries(refunds.map(x=>[x.return_id,x]));
     const remainingKg=(item)=>{const ms=qmov.filter(m=>m.return_item_id===item.id);const received=ms.filter(m=>m.movement_type==="received").reduce((a,m)=>a+Number(m.quantity),0);const done=ms.filter(m=>["released_to_company","released_to_distributor","damaged"].includes(m.movement_type)).reduce((a,m)=>a+Number(m.quantity),0);return Math.max(0,received-done)};
+    const remainingBags=(item)=>{const ms=qmov.filter(m=>m.return_item_id===item.id),keys=["50","100","200","500","1000"],out={};keys.forEach(k=>{const got=ms.filter(m=>m.movement_type==="received").reduce((a,m)=>a+Number(m.bag_counts?.[k]||0),0),used=ms.filter(m=>["released_to_company","released_to_distributor","damaged"].includes(m.movement_type)).reduce((a,m)=>a+Number(m.bag_counts?.[k]||0),0);out[k]=Math.max(0,got-used)});return out};
 
     const body=rs.map(r=>{const rf=refundByReturn[r.id];return `<tr><td>#${r.return_number}</td><td>${money(items.filter(i=>i.return_id===r.id).reduce((a,i)=>a+Number(i.refund_amount),0))}</td><td>${esc(r.inspection_status)}</td><td>${rf?(rf.delivered_at?"تم التسليم":rf.funded_at?"تم التمويل":"بانتظار التمويل"):"-"}</td><td>${profile.role==="admin"&&!rf?`<button data-allocate="${r.id}" class="secondary">تخصيص مبلغ الرد</button>`: ""}${profile.role==="admin"&&rf&&!rf.funded_at?`<button data-fund="${rf.id}" class="primary">تأكيد التمويل</button>`: ""}${profile.role==="admin"&&rf&&rf.funded_at&&!rf.delivered_at?`<button data-refund-delivered="${rf.id}" class="primary">تأكيد التسليم</button>`:""}</td></tr>`}).join("");
     setContent(section("المرتجعات",'<button id="new-return" class="primary">تسجيل مرتجع</button>')+table(["رقم المرتجع","قيمة الاسترداد","الفحص","حالة رد المبلغ","إجراء"],body)+
@@ -234,6 +235,7 @@
             '<p class="hint">الكمية المتاحة في هذا البند: '+qty(item.quantity)+' كجم</p>')
       ,"تأكيد التسوية"));
       const form=$("return-settlement-form");
+      if(item.bag_counts){const left=remainingBags(item);["50","100","200","500","1000"].forEach(k=>{form.elements["settle_"+k].value=left[k]})}
       const dispositionSelect=form.elements.disposition;
       const destinationWrap=$("return-destination-wrap");
       const destinationSelect=form.elements.destination_distributor_id;
@@ -249,7 +251,7 @@
         e.preventDefault();const fd=new FormData(form);
         const bags=item.bag_counts?readBags(form,"settle_"):null;
         const amount=bags?bagsKg(bags):Number(fd.get("quantity"));
-        if(!Number.isFinite(amount)||amount<=0||amount>remainingKg(item)|| (bags&&Object.values(bags).some(n=>!Number.isInteger(n)||n<0)))return toast("أدخل أعداد أكياس صحيحة لا تتجاوز المرتجع");
+        if(!Number.isFinite(amount)||amount<=0||amount>remainingKg(item)|| (bags&&(Object.values(bags).some(n=>!Number.isInteger(n)||n<0)||["50","100","200","500","1000"].some(k=>bags[k]>remainingBags(item)[k]))))return toast("أدخل أعدادًا لا تتجاوز المتبقي في العزل لكل مقاس");
         const disposition=fd.get("disposition");
         const destination=disposition==="released_to_distributor"?fd.get("destination_distributor_id"):null;
         if(disposition==="released_to_distributor"&&!destination)return toast("اختر الموزع المستلم");
