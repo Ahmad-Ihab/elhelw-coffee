@@ -318,11 +318,11 @@
       let host;
       try{
         if(typeof html2pdf!=="function")throw new Error("مكتبة إنشاء PDF لم يتم تحميلها. تحقق من اتصال الإنترنت ثم أعد المحاولة.");
-        host=document.createElement("div");host.innerHTML=html;
+        host=document.createElement("div");host.id="pdf-render-host";host.innerHTML=html;
         host.style.cssText="position:fixed;left:0;top:0;width:780px;background:#fff;z-index:99999;opacity:0;pointer-events:none";
         document.body.appendChild(host);
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-        const worker=html2pdf().set({filename,margin:8,image:{type:"jpeg",quality:.98},html2canvas:{scale:2,useCORS:true,allowTaint:false,backgroundColor:"#ffffff",logging:false,windowWidth:900},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"}}).from(host.firstElementChild).toPdf();
+        const worker=html2pdf().set({filename,margin:8,image:{type:"jpeg",quality:.98},html2canvas:{scale:2,useCORS:true,allowTaint:false,backgroundColor:"#ffffff",logging:false,windowWidth:900,onclone:(clonedDocument)=>{const clonedHost=clonedDocument.getElementById("pdf-render-host");if(clonedHost)clonedHost.style.opacity="1"}},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"}}).from(host.firstElementChild).toPdf();
         const pdf=await worker.get("pdf");
         if(!pdf||pdf.getNumberOfPages()<1)throw new Error("ملف PDF الناتج فارغ.");
         if(window.Capacitor?.isNativePlatform?.()){
