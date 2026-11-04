@@ -330,9 +330,13 @@
           if(!window.APP_FILESYSTEM?.writeFile)throw new Error("إضافة حفظ الملفات غير جاهزة. أغلق التطبيق وافتحه مجدداً.");
           const uri=pdf.output("datauristring"),base64=uri.substring(uri.indexOf(",")+1);
           if(!base64)throw new Error("تعذر تجهيز بيانات ملف PDF.");
-          const saved=await window.APP_FILESYSTEM.writeFile({path:"ELHELW-COFFEE/"+filename,data:base64,directory:window.APP_FILESYSTEM_DIRECTORY.Documents,recursive:true});
-          toast("تم حفظ الفاتورة في Documents/ELHELW-COFFEE");
-          if(window.APP_SHARE?.share){try{await window.APP_SHARE.share({title:filename,text:"فاتورة بن الحلو",url:saved.uri,dialogTitle:"مشاركة الفاتورة"})}catch(shareError){console.warn("PDF saved; share sheet unavailable",shareError)}}
+          const saved=await window.APP_FILESYSTEM.writeFile({path:"ELHELW-COFFEE/"+filename,data:base64,directory:window.APP_FILESYSTEM_DIRECTORY.Data,recursive:true});
+          if(window.APP_SHARE?.share){
+            await window.APP_SHARE.share({title:filename,text:"فاتورة بن الحلو - اختر تطبيق الملفات لحفظ نسخة على الجهاز",url:saved.uri,dialogTitle:"حفظ أو مشاركة الفاتورة"});
+            toast("تم تجهيز الفاتورة. اختر تطبيق الملفات لحفظها على الجهاز.");
+          }else{
+            throw new Error("تم إنشاء الفاتورة داخل التطبيق لكن قائمة المشاركة غير متاحة. حدّث التطبيق ثم أعد المحاولة.");
+          }
         }else{
           const blob=pdf.output("blob");
           if(!blob||blob.size<100)throw new Error("ملف PDF الناتج غير صالح.");
