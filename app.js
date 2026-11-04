@@ -322,7 +322,32 @@
         host.style.cssText="position:fixed;left:0;top:0;width:780px;background:#fff;z-index:99999;opacity:1;pointer-events:none";
         document.body.appendChild(host);
         await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-        const worker=html2pdf().set({filename,margin:8,image:{type:"jpeg",quality:.98},html2canvas:{scale:2,useCORS:true,allowTaint:false,backgroundColor:"#ffffff",logging:false,windowWidth:900},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"}}).from(host.firstElementChild).toPdf();
+        if(document.fonts?.ready)await document.fonts.ready;
+        await Promise.all([...host.querySelectorAll("img")].map(img=>{
+          if(img.complete)return Promise.resolve();
+          return new Promise(resolve=>{img.onload=img.onerror=resolve;});
+        }));
+        const worker=html2pdf().set({filename,margin:8,image:{type:"jpeg",quality:.98},html2canvas:{
+          scale:2,useCORS:true,allowTaint:false,backgroundColor:"#ffffff",logging:false,windowWidth:900,
+          onclone:clonedDoc=>{
+            const clonedHost=clonedDoc.querySelector("#pdf-render-host");
+            const clonedInvoice=clonedHost?.firstElementChild;
+            if(clonedHost)clonedHost.style.cssText="position:fixed;left:0;top:0;width:780px;background:#fff;z-index:99999;opacity:1;visibility:visible";
+            if(clonedInvoice)clonedInvoice.style.cssText+=";display:block;visibility:visible;opacity:1;background:#fff;color:#222";
+          }
+        },jsPDF:{unit:"mm",format:"a4",orientation:"portrait"}}).from(host.firstElementChild).toCanvas();
+        const canvas=await worker.get("canvas");
+        if(!canvas||!canvas.width||!canvas.height)throw new Error("تعذر رسم الفاتورة إلى صورة. لم يتم إنشاء PDF.");
+        const ctx=canvas.getContext("2d",{willReadFrequently:true});
+        if(!ctx)throw new Error("تعذر فحص صورة الفاتورة قبل إنشاء PDF.");
+        const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+        const stride=Math.max(4,Math.floor((canvas.width*canvas.height)/12000)*4);
+        let visiblePixels=0;
+        for(let p=0;p<pixels.length;p+=stride){
+          if(pixels[p]<245||pixels[p+1]<245||pixels[p+2]<245){visiblePixels++;if(visiblePixels>=8)break;}
+        }
+        if(visiblePixels<8)throw new Error("مرحلة تحويل الفاتورة إلى صورة أنتجت صفحة بيضاء. أوقفنا إنشاء PDF حتى لا نحفظ فاتورة فارغة.");
+        await worker.toPdf();
         const pdf=await worker.get("pdf");
         if(!pdf||pdf.getNumberOfPages()<1)throw new Error("ملف PDF الناتج فارغ.");
         if(window.Capacitor?.isNativePlatform?.()){
