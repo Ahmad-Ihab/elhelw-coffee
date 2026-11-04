@@ -330,7 +330,7 @@
           if(!window.APP_FILESYSTEM?.writeFile)throw new Error("إضافة حفظ الملفات غير جاهزة. أغلق التطبيق وافتحه مجدداً.");
           const uri=pdf.output("datauristring"),base64=uri.substring(uri.indexOf(",")+1);
           if(!base64)throw new Error("تعذر تجهيز بيانات ملف PDF.");
-          const saved=await window.APP_FILESYSTEM.writeFile({path:"ELHELW-COFFEE/"+filename,data:base64,directory:window.APP_FILESYSTEM_DIRECTORY.Data,recursive:true});
+          const saved=await window.APP_FILESYSTEM.writeFile({path:"ELHELW-COFFEE/"+filename,data:base64,directory:window.APP_FILESYSTEM_DIRECTORY.Cache,recursive:true});
           if(window.APP_SHARE?.share){
             await window.APP_SHARE.share({title:filename,text:"فاتورة بن الحلو - اختر تطبيق الملفات لحفظ نسخة على الجهاز",url:saved.uri,dialogTitle:"حفظ أو مشاركة الفاتورة"});
             toast("تم تجهيز الفاتورة. اختر تطبيق الملفات لحفظها على الجهاز.");
