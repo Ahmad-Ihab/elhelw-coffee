@@ -317,6 +317,13 @@
       buttons.forEach(b=>b.disabled=true);
       let host;
       try{
+        if(window.Capacitor?.isNativePlatform?.()){
+          const nativePdf=window.Capacitor?.Plugins?.InvoicePdf;
+          if(!nativePdf?.print)throw new Error("مكوّن الطباعة الأصلي غير متاح. أعد تثبيت النسخة الأحدث من التطبيق.");
+          await nativePdf.print({html,filename});
+          toast("تم فتح نافذة طباعة أندرويد. اختر Save as PDF ثم احفظ الفاتورة.");
+          return;
+        }
         if(typeof html2pdf!=="function")throw new Error("مكتبة إنشاء PDF لم يتم تحميلها. تحقق من اتصال الإنترنت ثم أعد المحاولة.");
         host=document.createElement("div");host.id="pdf-render-host";host.innerHTML=html;
         host.style.cssText="position:fixed;left:0;top:0;width:780px;background:#fff;z-index:99999;opacity:1;pointer-events:none";
