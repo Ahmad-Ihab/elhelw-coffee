@@ -130,6 +130,7 @@ jobs:
             versionCode: ${{ steps.app_version.outputs.code }}
           files: android/app/build/outputs/apk/release/app-release.apk
           make_latest: true
+          overwrite_files: true
           fail_on_unmatched_files: true
 
       - name: Upload debug APK
