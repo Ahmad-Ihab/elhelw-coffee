@@ -114,14 +114,23 @@ const replacementMain = [
 "}"
 ].join("\n");
 fs.writeFileSync(mainPath, replacementMain, "utf8");
+const updaterTemplate = fs.readFileSync(path.join(__dirname, "AppUpdaterPlugin.java"), "utf8");
+fs.writeFileSync(path.join(path.dirname(mainPath), "AppUpdaterPlugin.java"), updaterTemplate.replace("__PACKAGE__", packageName), "utf8");
+const manifestPath = path.resolve(__dirname, "..", "android", "app", "src", "main", "AndroidManifest.xml");
+if (!fs.existsSync(manifestPath)) throw new Error("AndroidManifest.xml was not generated.");
+let manifest = fs.readFileSync(manifestPath, "utf8");
+if (!manifest.includes("android.permission.REQUEST_INSTALL_PACKAGES")) {
+  manifest = manifest.replace("<application", '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application');
+}
+fs.writeFileSync(manifestPath, manifest, "utf8");
 const gradlePath = path.resolve(__dirname, "..", "android", "app", "build.gradle");
 if (!fs.existsSync(gradlePath)) throw new Error("Android app/build.gradle was not generated.");
 let gradle = fs.readFileSync(gradlePath, "utf8");
 if (!/versionCode\s+\d+/.test(gradle) || !/versionName\s+"[^"]+"/.test(gradle)) {
   throw new Error("Could not find versionCode/versionName in app/build.gradle.");
 }
-gradle = gradle.replace(/versionCode\s+\d+/, "versionCode 2");
-gradle = gradle.replace(/versionName\s+"[^"]+"/, 'versionName "1.0.1"');
+gradle = gradle.replace(/versionCode\s+\d+/, "versionCode 3");
+gradle = gradle.replace(/versionName\s+"[^"]+"/, 'versionName "1.0.2"');
 fs.writeFileSync(gradlePath, gradle, "utf8");
-console.log("Configured Android app version 1.0.1 (versionCode 2).");
+console.log("Configured Android app version 1.0.2 (versionCode 3).");
 console.log("Registered native InvoicePdf plugin in " + mainPath);
