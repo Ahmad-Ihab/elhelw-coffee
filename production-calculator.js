@@ -24,7 +24,7 @@
           if (error) throw error;
           send({ type: "elhelw-pc-history", rows: data || [] });
         } else if (message.type === "elhelw-pc-print") {
-          const nativePdf = window.Capacitor?.Plugins?.InvoicePdf;
+          const nativePdf = window.APP_INVOICE_PDF || window.Capacitor?.Plugins?.InvoicePdf;
           if (!nativePdf?.print) throw new Error("مكوّن الطباعة الأصلي غير متاح. حدّث التطبيق إلى أحدث إصدار.");
           await nativePdf.print({ html: String(message.html || ""), filename: String(message.filename || "ELHELW-PRODUCTION.pdf") });
           send({ type: "elhelw-pc-printed" });
