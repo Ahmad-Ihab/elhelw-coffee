@@ -166,7 +166,7 @@
         try{const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error("انتهت الجلسة. سجل الدخول مرة أخرى.");
           const response=await fetch(cfg.SUPABASE_URL+"/functions/v1/admin-create-user",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":cfg.SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({full_name:name,legal_full_name:legalName||null,national_id:nationalId||null,email:String(d.get("email")).trim(),password:d.get("password"),role,phone:String(d.get("phone")||"").trim()})});
           const result=await response.json();if(!response.ok)throw new Error(result.error||"تعذر إنشاء الحساب");
-          let identityWarning="";const {error:identityError}=await sb.from("profiles").update({national_id:nationalId||null,legal_full_name:legalName||null}).eq("id",result.user_id);if(identityError){console.error(identityError);identityWarning=" لكن تعذر حفظ رقم البطاقة؛ راجع بيانات الحساب قبل تسليمه للموزع."}
+          let identityWarning="";const {error:identityError}=await sb.from("profiles").update({national_id:nationalId||null,legal_full_name:legalName||null,phone:String(d.get("phone")||"").trim()||null}).eq("id",result.user_id);if(identityError){console.error(identityError);identityWarning=" لكن تعذر حفظ رقم البطاقة؛ راجع بيانات الحساب قبل تسليمه للموزع."}
           let photoWarning="";
           if(avatar?.size){try{const ext={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"}[avatar.type],path=result.user_id+"/"+Date.now()+"."+ext;
             const {error:uploadError}=await sb.storage.from("profile-avatars").upload(path,avatar,{cacheControl:"3600",upsert:false,contentType:avatar.type});if(uploadError)throw uploadError;
@@ -178,9 +178,9 @@
   }
   async function peopleDirectory(){
     if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك بعرض دليل الأفراد.</div>');
-    const [people,ds]=await Promise.all([rows("profiles","id,full_name,legal_full_name,role,national_id,avatar_path,created_at"),rows("distributors","user_id,phone")]);
+    const [people,ds]=await Promise.all([rows("profiles","id,full_name,legal_full_name,role,national_id,phone,avatar_path,created_at"),rows("distributors","user_id,phone")]);
     const phoneByUser=Object.fromEntries(ds.map(d=>[d.user_id,d.phone||""]));
-    const prepared=await Promise.all(people.map(async p=>({...p,avatarUrl:await signedAvatarUrl(p.avatar_path).catch(()=>""),phone:phoneByUser[p.id]||""})));
+    const prepared=await Promise.all(people.map(async p=>({...p,avatarUrl:await signedAvatarUrl(p.avatar_path).catch(()=>""),phone:p.phone||phoneByUser[p.id]||""})));
     const card=p=>'<article class="panel-card person-card"><div class="person-summary">'+(p.avatarUrl?'<img class="profile-photo" src="'+p.avatarUrl+'" alt="صورة '+esc(p.full_name)+'">':'<div class="profile-photo profile-photo-empty">👤</div>')+'<div><h3>'+esc(p.full_name||"بدون اسم")+'</h3>'+(p.legal_full_name?'<p class="hint">الاسم الثلاثي في البطاقة: '+esc(p.legal_full_name)+'</p>':'<p class="hint">الاسم الثلاثي في البطاقة: غير مسجل</p>')+'<p class="muted">'+(p.role==="admin"?"أدمن":"موزع")+' · '+(p.phone?esc(p.phone):"لا يوجد هاتف")+'</p><p class="hint person-id">معرّف الحساب: <code>'+esc(p.id)+'</code></p><button class="secondary" data-copy-person="'+p.id+'">نسخ المعرّف</button></div><button class="secondary" data-person="'+p.id+'">عرض التفاصيل</button></div></article>';
     const bindDetails=()=>{$("people-list").querySelectorAll("[data-person]").forEach(btn=>btn.onclick=()=>{const p=prepared.find(x=>x.id===btn.dataset.person);$("person-details").innerHTML='<section class="panel-card person-details">'+(p.avatarUrl?'<img class="profile-photo" src="'+p.avatarUrl+'" alt="الصورة الشخصية">':'<div class="profile-photo profile-photo-empty">👤</div>')+'<h3>'+esc(p.full_name||"بدون اسم")+'</h3><p><b>نوع الحساب:</b> '+(p.role==="admin"?"أدمن":"موزع")+'</p><p><b>معرّف الحساب الكامل:</b> <code>'+esc(p.id)+'</code> <button class="secondary" id="copy-person-id">نسخ المعرّف</button></p><p><b>الاسم الثلاثي في البطاقة:</b> '+esc(p.legal_full_name||"غير مسجل")+'</p><p><b>رقم البطاقة:</b> '+esc(p.national_id||"غير مسجل")+'</p><p><b>الهاتف:</b> '+esc(p.phone||"غير مسجل")+'</p><p><b>تاريخ إنشاء الحساب:</b> '+new Date(p.created_at).toLocaleString("ar-EG")+'</p><p><b>حالة الملف:</b> '+((p.avatar_path&&(p.full_name||"").trim()&&(p.role!=="distributor"||/^\d{14}$/.test(p.national_id||"")) )?"مكتمل":"غير مكتمل")+'</p></section>';$("copy-person-id").onclick=()=>navigator.clipboard?.writeText(p.id).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز"));});};
     const renderList=(term="",role="all")=>{const filtered=prepared.filter(p=>(role==="all"||p.role===role)&&[p.full_name,p.legal_full_name,p.national_id,p.id,p.phone].some(v=>String(v||"").toLowerCase().includes(term.toLowerCase())));$("people-list").innerHTML=filtered.map(card).join("")||'<div class="panel-card empty">لا توجد نتائج مطابقة.</div>';bindDetails();$("people-list").querySelectorAll("[data-copy-person]").forEach(btn=>btn.onclick=()=>navigator.clipboard?.writeText(btn.dataset.copyPerson).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز")));};
@@ -457,6 +457,7 @@
         '<section class="panel-card"><h3>البيانات الشخصية</h3>'+
           formPanel("profile-details-form","تعديل بيانات الحساب",
             field("الاسم الثنائي (اسم الحساب الظاهر في التطبيق)","full_name","text",'required maxlength="120" autocomplete="name" placeholder="مثال: أحمد إيهاب"')+field("الاسم الثلاثي كما في البطاقة (يظهر للأدمن في دليل الأفراد فقط)","legal_full_name","text",'maxlength="160" autocomplete="off" placeholder="كما هو مكتوب في البطاقة" '+(required?"required":""))+
+            field("رقم الهاتف (اختياري)","phone","tel",'inputmode="tel" maxlength="30" autocomplete="tel" placeholder="مثال: 01012345678"')+
             field("رقم البطاقة الشخصية"+(required?" (إجباري)":" (اختياري)"),"national_id","text",'inputmode="numeric" maxlength="14" minlength="14" pattern="[0-9]{14}" autocomplete="off" '+(required?"required":""))+
             '<p class="hint">'+(required?"الاسم الثنائي هو اسم الحساب الظاهر أعلى التطبيق وفي دليل الأفراد. الاسم الثلاثي يُحفظ منفصلًا ويظهر للأدمن فقط في بطاقة الشخص داخل دليل الأفراد. رقم البطاقة 14 رقمًا.":"الاسم الثنائي هو اسم الحساب الظاهر في التطبيق. الاسم الثلاثي يُحفظ منفصلًا ويظهر للأدمن فقط في بطاقة الشخص داخل دليل الأفراد.")+'</p>'
           )+
@@ -474,21 +475,23 @@
     details.elements.full_name.value=profile.full_name||"";
     details.elements.legal_full_name.value=profile.legal_full_name||"";
     details.elements.national_id.value=profile.national_id||"";
+    details.elements.phone.value=profile.phone||"";
     details.onsubmit=async e=>{
       e.preventDefault();
       const data=new FormData(details);
       const fullName=String(data.get("full_name")||"").trim();
       const legalFullName=String(data.get("legal_full_name")||"").trim();
       const nationalId=String(data.get("national_id")||"").trim();
+      const phone=String(data.get("phone")||"").trim();
       if(!fullName)return toast("اكتب اسم الحساب");
       if(required&&!legalFullName)return toast("اكتب الاسم الثلاثي كما في البطاقة");
       if(required && !/^\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
       if(nationalId && !/^\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
       const btn=details.querySelector('button[type="submit"],button:not([type])');if(btn)btn.disabled=true;
       try{
-        const {error}=await sb.rpc("update_my_profile",{p_full_name:fullName,p_national_id:nationalId||null,p_legal_full_name:legalFullName||null});
+        const {error}=await sb.rpc("update_my_profile",{p_full_name:fullName,p_national_id:nationalId||null,p_legal_full_name:legalFullName||null,p_phone:phone||null});
         if(error)throw error;
-        profile.full_name=fullName;profile.legal_full_name=legalFullName||null;profile.national_id=nationalId||null;
+        profile.full_name=fullName;profile.legal_full_name=legalFullName||null;profile.national_id=nationalId||null;profile.phone=phone||null;
         if(distributor)distributor.name=fullName;
         $("welcome-title").textContent="أهلاً "+fullName;
         await refreshUserArea();
