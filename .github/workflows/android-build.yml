@@ -56,6 +56,11 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Generate Elhelw Android launcher icons
+        run: |
+          npm install --no-save sharp
+          node scripts/generate-android-icons.js
+
       - name: Register native invoice PDF printer
         run: node scripts/prepare-android.js
 
