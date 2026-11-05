@@ -43,6 +43,7 @@ async function main() {
 </adaptive-icon>
 `;
   fs.writeFileSync(path.join(adaptiveDir, "ic_launcher.xml"), adaptiveXml, "utf8");
+  fs.writeFileSync(path.join(adaptiveDir, "ic_launcher_round.xml"), adaptiveXml, "utf8");
   const valuesDir = path.join(resRoot, "values");
   fs.mkdirSync(valuesDir, { recursive: true });
   const colorsPath = path.join(valuesDir, "ic_launcher_background.xml");
