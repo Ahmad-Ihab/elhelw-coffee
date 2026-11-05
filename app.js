@@ -25,6 +25,7 @@
   function selectField(label,name,options){return `<label class="field">${label}<select name="${name}" required><option value="">اختر</option>${options.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</select></label>`}
   function formPanel(id,title,fields,submitLabel="حفظ"){return `<form id="${id}" class="form-panel"><h3>${title}</h3><div class="form-grid">${fields}</div><div class="form-actions"><button class="primary">${submitLabel}</button><button type="button" class="secondary" data-cancel>إلغاء</button></div></form>`}
   function showForm(html){$("content").insertAdjacentHTML("afterbegin",html);$("content").querySelector("[data-cancel]")?.addEventListener("click",e=>e.target.closest("form").remove())}
+  function distributorProfileComplete(){return profile?.role!=="distributor" || ((profile.full_name||"").trim().split(/\s+/).filter(Boolean).length>=3 && /^\d{14}$/.test(profile.national_id||""));}
   async function signedAvatarUrl(path){if(!path)return "";const {data,error}=await sb.storage.from("profile-avatars").createSignedUrl(path,3600);if(error)throw error;return data?.signedUrl||"";}
   async function refreshUserArea(){const url=await signedAvatarUrl(profile.avatar_path).catch(()=> "");const photo=url?`<img class="user-avatar" src="${url}" alt="الصورة الشخصية">`:"";$("user-area").innerHTML=`${photo}<span>${esc(profile.full_name)} · ${profile.role==="admin"?"إدارة":"موزع"}</span><button id="logout" class="secondary">خروج</button>`;$("logout").onclick=()=>sb.auth.signOut();}
   async function boot(){
@@ -43,7 +44,7 @@
       if(de)throw de;distributor=d;
     }
     $("auth-view").classList.add("hidden");$("workspace").classList.remove("hidden");
-    if(profile.role==="distributor" && ((profile.full_name||"").trim().split(/\s+/).filter(Boolean).length<3 || !/^\d{14}$/.test(profile.national_id||"")))activeTab="profile";
+    if(!distributorProfileComplete())activeTab="profile";
     await refreshUserArea();
     $("role-label").textContent=profile.role==="admin"?"ADMIN WORKSPACE":"DISTRIBUTOR WORKSPACE";
     $("welcome-title").textContent=`أهلاً ${profile.full_name}`;
@@ -54,7 +55,7 @@
   function renderTabs(){
     const tabs=profile.role==="admin"?adminTabs:distTabs;
     $("tabs").innerHTML=tabs.map(([id,label])=>`<button class="tab ${activeTab===id?"active":""}" data-tab="${id}">${label}</button>`).join("");
-    $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{activeTab=b.dataset.tab;renderTabs();render()});
+    $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(!distributorProfileComplete() && b.dataset.tab!=="profile")return toast("أكمل الاسم الثلاثي ورقم البطاقة أولاً");activeTab=b.dataset.tab;renderTabs();render()});
   }
   async function render(){
     try{
