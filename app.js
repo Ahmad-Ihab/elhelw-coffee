@@ -182,7 +182,54 @@
     const phoneByUser=Object.fromEntries(ds.map(d=>[d.user_id,d.phone||""]));
     const prepared=await Promise.all(people.map(async p=>({...p,avatarUrl:await signedAvatarUrl(p.avatar_path).catch(()=>""),phone:p.phone||phoneByUser[p.id]||""})));
     const card=p=>'<article class="panel-card person-card"><div class="person-summary">'+(p.avatarUrl?'<img class="profile-photo" src="'+p.avatarUrl+'" alt="صورة '+esc(p.full_name)+'">':'<div class="profile-photo profile-photo-empty">👤</div>')+'<div><h3>'+esc(p.full_name||"بدون اسم")+'</h3>'+(p.legal_full_name?'<p class="hint">الاسم الثلاثي في البطاقة: '+esc(p.legal_full_name)+'</p>':'<p class="hint">الاسم الثلاثي في البطاقة: غير مسجل</p>')+'<p class="muted">'+(p.role==="admin"?"أدمن":"موزع")+' · '+(p.phone?esc(p.phone):"لا يوجد هاتف")+'</p><p class="hint person-id">معرّف الحساب: <code>'+esc(p.id)+'</code></p><button class="secondary" data-copy-person="'+p.id+'">نسخ المعرّف</button></div><button class="secondary" data-person="'+p.id+'">عرض التفاصيل</button></div></article>';
-    const bindDetails=()=>{$("people-list").querySelectorAll("[data-person]").forEach(btn=>btn.onclick=()=>{const p=prepared.find(x=>x.id===btn.dataset.person);$("person-details").innerHTML='<section class="panel-card person-details">'+(p.avatarUrl?'<img class="profile-photo" src="'+p.avatarUrl+'" alt="الصورة الشخصية">':'<div class="profile-photo profile-photo-empty">👤</div>')+'<h3>'+esc(p.full_name||"بدون اسم")+'</h3><p><b>نوع الحساب:</b> '+(p.role==="admin"?"أدمن":"موزع")+'</p><p><b>معرّف الحساب الكامل:</b> <code>'+esc(p.id)+'</code> <button class="secondary" id="copy-person-id">نسخ المعرّف</button></p><p><b>الاسم الثلاثي في البطاقة:</b> '+esc(p.legal_full_name||"غير مسجل")+'</p><p><b>رقم البطاقة:</b> '+esc(p.national_id||"غير مسجل")+'</p><p><b>الهاتف:</b> '+esc(p.phone||"غير مسجل")+'</p><p><b>تاريخ إنشاء الحساب:</b> '+new Date(p.created_at).toLocaleString("ar-EG")+'</p><p><b>حالة الملف:</b> '+((p.avatar_path&&(p.full_name||"").trim()&&(p.role!=="distributor"||/^\d{14}$/.test(p.national_id||"")) )?"مكتمل":"غير مكتمل")+'</p></section>';$("copy-person-id").onclick=()=>navigator.clipboard?.writeText(p.id).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز"));});};
+    const bindDetails=()=>{$("people-list").querySelectorAll("[data-person]").forEach(btn=>btn.onclick=()=>{const p=prepared.find(x=>x.id===btn.dataset.person);$("person-details").innerHTML='<section class="panel-card person-details">'+(p.avatarUrl?'<img class="profile-photo" src="'+p.avatarUrl+'" alt="الصورة الشخصية">':'<div class="profile-photo profile-photo-empty">👤</div>')+'<h3>'+esc(p.full_name||"بدون اسم")+'</h3><p><b>نوع الحساب:</b> '+(p.role==="admin"?"أدمن":"موزع")+'</p><p><b>معرّف الحساب الكامل:</b> <code>'+esc(p.id)+'</code> <button class="secondary" id="copy-person-id">نسخ المعرّف</button></p><p><b>الاسم الثلاثي في البطاقة:</b> '+esc(p.legal_full_name||"غير مسجل")+'</p><p><b>رقم البطاقة:</b> '+esc(p.national_id||"غير مسجل")+'</p><p><b>الهاتف:</b> '+esc(p.phone||"غير مسجل")+'</p><p><b>تاريخ إنشاء الحساب:</b> '+new Date(p.created_at).toLocaleString("ar-EG")+'</p><p><b>حالة الملف:</b> '+((p.avatar_path&&(p.full_name||"").trim()&&(p.role!=="distributor"||/^\d{14}$/.test(p.national_id||"")) )?"مكتمل":"غير مكتمل")+'</p></section>';$("copy-person-id").onclick=()=>navigator.clipboard?.writeText(p.id).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز"));
+      $("person-details").insertAdjacentHTML("beforeend",'<div class="form-actions"><button class="primary" id="edit-person">تعديل بيانات الشخص</button></div>');
+      $("edit-person").onclick=()=>{
+        const host=$("person-details");
+        host.insertAdjacentHTML("beforeend",'<section class="panel-card"><h3>تعديل بيانات '+esc(p.full_name||"الحساب")+'</h3><form id="edit-person-form" class="form-grid"><label class="field">اسم الحساب الظاهر<input name="full_name" maxlength="120" required value="'+esc(p.full_name||"")+'"></label><label class="field">الاسم الثلاثي كما في البطاقة<input name="legal_full_name" maxlength="160" value="'+esc(p.legal_full_name||"")+'"></label><label class="field">رقم الهاتف<input name="phone" type="tel" maxlength="30" value="'+esc(p.phone||"")+'"></label><label class="field">رقم البطاقة الشخصية<input name="national_id" inputmode="numeric" maxlength="14" value="'+esc(p.national_id||"")+'"></label><label class="field">تغيير الصورة الشخصية<input name="avatar" type="file" accept="image/jpeg,image/png,image/webp"></label><div class="form-actions"><button class="primary" type="submit">حفظ التعديلات</button><button class="secondary" type="button" id="cancel-person-edit">إلغاء</button></div></form></section>');
+        const form=$("edit-person-form");
+        $("cancel-person-edit").onclick=()=>form.parentElement.remove();
+        form.onsubmit=async e=>{
+          e.preventDefault();
+          const d=new FormData(form),name=String(d.get("full_name")||"").trim(),legal=String(d.get("legal_full_name")||"").trim(),phone=String(d.get("phone")||"").trim(),nid=String(d.get("national_id")||"").trim(),file=d.get("avatar");
+          if(!name)return toast("اكتب اسم الحساب");
+          if(nid&&!/^\\d{14}$/.test(nid))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
+          if(p.role==="distributor"&&!legal)return toast("اكتب الاسم الثلاثي للموزع");
+          if(file?.size>3*1024*1024)return toast("حجم الصورة يجب ألا يتجاوز 3 ميجابايت");
+          if(file?.size&& !["image/jpeg","image/png","image/webp"].includes(file.type))return toast("اختر صورة JPG أو PNG أو WebP");
+          const save=form.querySelector('button[type="submit"]');save.disabled=true;
+          let newPath=null;
+          try{
+            if(file?.size){
+              const ext={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"}[file.type];
+              newPath=p.id+"/"+Date.now()+"."+ext;
+              const {error}=await sb.storage.from("profile-avatars").upload(newPath,file,{cacheControl:"3600",upsert:false,contentType:file.type});
+              if(error)throw error;
+            }
+            const changes={full_name:name,legal_full_name:legal||null,phone:phone||null,national_id:nid||null};
+            if(newPath)changes.avatar_path=newPath;
+            const {error:profileError}=await sb.from("profiles").update(changes).eq("id",p.id);
+            if(profileError)throw profileError;
+            if(p.role==="distributor"){
+              const {error:distError}=await sb.from("distributors").update({name,phone:phone||null}).eq("user_id",p.id);
+              if(distError)throw distError;
+            }
+            const oldPath=p.avatar_path;
+            Object.assign(p,{full_name:name,legal_full_name:legal||null,phone:phone||null,national_id:nid||null});
+            if(newPath){p.avatar_path=newPath;p.avatarUrl=await signedAvatarUrl(newPath).catch(()=> "");}
+            if(newPath&&oldPath)await sb.storage.from("profile-avatars").remove([oldPath]);
+            toast("تم تحديث بيانات الشخص بنجاح");
+            renderList($("people-search").value,$("people-role").value);
+            const refreshed=prepared.find(x=>x.id===p.id);
+            const detailBtn=$("people-list").querySelector('[data-person="'+p.id+'"]');
+            if(detailBtn)detailBtn.click();
+          }catch(error){
+            if(newPath)await sb.storage.from("profile-avatars").remove([newPath]);
+            fail(error);save.disabled=false;
+          }
+        };
+      };
+    });};
     const renderList=(term="",role="all")=>{const filtered=prepared.filter(p=>(role==="all"||p.role===role)&&[p.full_name,p.legal_full_name,p.national_id,p.id,p.phone].some(v=>String(v||"").toLowerCase().includes(term.toLowerCase())));$("people-list").innerHTML=filtered.map(card).join("")||'<div class="panel-card empty">لا توجد نتائج مطابقة.</div>';bindDetails();$("people-list").querySelectorAll("[data-copy-person]").forEach(btn=>btn.onclick=()=>navigator.clipboard?.writeText(btn.dataset.copyPerson).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز")));};
     setContent(section("دليل الأفراد","")+'<div class="panel-card"><div class="form-grid"><label class="field">بحث بالاسم أو البطاقة أو المعرّف أو الهاتف<input id="people-search" type="search" placeholder="اكتب للبحث..."></label><label class="field">نوع الحساب<select id="people-role"><option value="all">كل الحسابات</option><option value="admin">الأدمنز</option><option value="distributor">الموزعون</option></select></label></div><p class="hint">إجمالي الحسابات: '+prepared.length+'</p></div><div id="people-list" class="people-list"></div><div id="person-details"></div>');
     const update=()=>renderList($("people-search").value,$("people-role").value);$("people-search").oninput=update;$("people-role").onchange=update;update();
