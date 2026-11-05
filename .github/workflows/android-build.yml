@@ -2,6 +2,15 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: APK type to build
+        required: true
+        default: debug
+        type: choice
+        options:
+          - debug
+          - release
   push:
     branches: [main]
     paths:
@@ -13,6 +22,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "capacitor.config.json"
+      - "manifest.webmanifest"
       - "scripts/**"
       - ".github/workflows/android-build.yml"
 
@@ -52,14 +62,53 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Restore Android release keystore
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type == 'release' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64 repository secret"; exit 1; }
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/elhelw-release.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/elhelw-release.keystore" >> "$GITHUB_ENV"
+
+      - name: Configure release signing
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type == 'release' }}
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/elhelw-release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: node scripts/configure-android-release.js
+
+      - name: Build signed release APK
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type == 'release' }}
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/elhelw-release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
       - name: Build debug APK
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type != 'release' }}
         working-directory: android
         run: ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload signed release APK
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type == 'release' }}
         uses: actions/upload-artifact@v4
         with:
-          name: elhelw-coffee-android-debug
+          name: elhelw-distribution-android-release
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload debug APK
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type != 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: elhelw-distribution-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
