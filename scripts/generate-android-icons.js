@@ -3,41 +3,61 @@ const path = require("node:path");
 const sharp = require("sharp");
 
 const root = path.resolve(__dirname, "..");
-// This is the finished Photoshop launcher icon uploaded by the project owner.
 const sourcePath = path.join(root, "app icon copy.png");
 if (!fs.existsSync(sourcePath)) {
   throw new Error('Missing the uploaded launcher artwork: "app icon copy.png"');
 }
 
 const resRoot = path.join(root, "android", "app", "src", "main", "res");
-const densities = {
-  mdpi: 48,
-  hdpi: 72,
-  xhdpi: 96,
-  xxhdpi: 144,
-  xxxhdpi: 192,
-};
+const legacyDensities = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
+// Adaptive icons use a 108dp canvas. Keep the complete artwork inset so the
+// system's launcher mask/shadow cannot cut off the designed outer frame.
+const adaptiveDensities = { mdpi: 108, hdpi: 162, xhdpi: 216, xxhdpi: 324, xxxhdpi: 432 };
+const MASTER_SIZE = 1024;
+const ARTWORK_SIZE = 860;
 
 async function main() {
-  const source = sharp(sourcePath);
-  const metadata = await source.metadata();
+  const metadata = await sharp(sourcePath).metadata();
   if (!metadata.width || !metadata.height) {
     throw new Error("The uploaded app icon image could not be read.");
   }
 
-  // Use the supplied finished artwork directly; do not redraw or replace its design.
-  const master = await source
-    .resize(512, 512, { fit: "cover", position: "centre" })
+  // Preserve the original aspect ratio and every pixel of the Photoshop artwork.
+  // Add transparent breathing room instead of using 'cover' (which crops edges).
+  const artwork = await sharp(sourcePath)
+    .resize(ARTWORK_SIZE, ARTWORK_SIZE, {
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      withoutEnlargement: false
+    })
     .png()
     .toBuffer();
 
-  for (const [density, size] of Object.entries(densities)) {
+  const master = await sharp({
+    create: {
+      width: MASTER_SIZE,
+      height: MASTER_SIZE,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite([{ input: artwork, gravity: "centre" }])
+    .png()
+    .toBuffer();
+
+  for (const [density, size] of Object.entries(legacyDensities)) {
     const dir = path.join(resRoot, `mipmap-${density}`);
     fs.mkdirSync(dir, { recursive: true });
-    const icon = sharp(master).resize(size, size);
+    const icon = sharp(master).resize(size, size, { fit: "contain" });
     await icon.clone().png().toFile(path.join(dir, "ic_launcher.png"));
     await icon.clone().png().toFile(path.join(dir, "ic_launcher_round.png"));
-    await icon.clone().png().toFile(path.join(dir, "ic_launcher_foreground.png"));
+  }
+
+  for (const [density, size] of Object.entries(adaptiveDensities)) {
+    const dir = path.join(resRoot, `mipmap-${density}`);
+    fs.mkdirSync(dir, { recursive: true });
+    await sharp(master).resize(size, size, { fit: "contain" })
+      .png().toFile(path.join(dir, "ic_launcher_foreground.png"));
   }
 
   const adaptiveDir = path.join(resRoot, "mipmap-anydpi-v26");
@@ -60,7 +80,7 @@ async function main() {
 `,
     "utf8"
   );
-  console.log("Generated Android launcher icons from app icon copy.png.");
+  console.log(`Generated high-resolution Android launcher icons from the original ${metadata.width}x${metadata.height} artwork with contain scaling and safe margins.`);
 }
 
 main().catch((error) => {
