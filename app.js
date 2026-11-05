@@ -432,7 +432,7 @@
         const result=await nativeUpdater.installUpdate();
         if(result.permissionRequired){
           window.__ELHELW_INSTALL_PERMISSION_PENDING=true;
-          alert("اسمح للتطبيق بتثبيت التطبيقات من هذا المصدر في شاشة الإعدادات. عند الرجوع للتطبيق سيبدأ التثبيت.");
+          toast("اسمح بالتثبيت من هذا المصدر في إعدادات أندرويد، ثم ارجع للتطبيق.");
         }
       }
     }catch(error){console.warn("App update check:",error);if(error?.message)toast(error.message)}
