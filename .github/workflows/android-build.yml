@@ -27,7 +27,7 @@ on:
       - ".github/workflows/android-build.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -100,6 +100,15 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug
 
+      - name: Read Android app version
+        id: app_version
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
+        run: |
+          VERSION_NAME=$(grep -oP 'versionName "\\K[^"]+' android/app/build.gradle)
+          VERSION_CODE=$(grep -oP 'versionCode \\K[0-9]+' android/app/build.gradle)
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
       - name: Upload signed release APK
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
         uses: actions/upload-artifact@v4
@@ -108,6 +117,20 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish Android release for in-app updates
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.app_version.outputs.name }}
+          name: Elhelw Distribution v${{ steps.app_version.outputs.name }}
+          body: |
+            Android application release.
+            versionName: ${{ steps.app_version.outputs.name }}
+            versionCode: ${{ steps.app_version.outputs.code }}
+          files: android/app/build/outputs/apk/release/app-release.apk
+          make_latest: true
+          fail_on_unmatched_files: true
 
       - name: Upload debug APK
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_type != 'release') }}
