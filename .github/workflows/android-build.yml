@@ -18,6 +18,8 @@ on:
       - "index.html"
       - "styles.css"
       - "production-calculator.js"
+      - "production-calculator/**"
+      - "sw.js"
       - "production-calculator.css"
       - "config.js"
       - "assets/**"
