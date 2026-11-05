@@ -193,7 +193,7 @@
           e.preventDefault();
           const d=new FormData(form),name=String(d.get("full_name")||"").trim(),legal=String(d.get("legal_full_name")||"").trim(),phone=String(d.get("phone")||"").trim(),nid=String(d.get("national_id")||"").trim(),file=d.get("avatar");
           if(!name)return toast("اكتب اسم الحساب");
-          if(nid&&!/^\\d{14}$/.test(nid))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
+          if(nid&&!/^\d{14}$/.test(nid))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
           if(p.role==="distributor"&&!legal)return toast("اكتب الاسم الثلاثي للموزع");
           if(file?.size>3*1024*1024)return toast("حجم الصورة يجب ألا يتجاوز 3 ميجابايت");
           if(file?.size&& !["image/jpeg","image/png","image/webp"].includes(file.type))return toast("اختر صورة JPG أو PNG أو WebP");
