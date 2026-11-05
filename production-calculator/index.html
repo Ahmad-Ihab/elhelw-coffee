@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#9b4f0b">
+<title>بن الحلو | حاسبة الإنتاج</title>
+<style>
+:root{
+  --coffee:#9b4f0b;--coffee2:#c56a16;--cream:#f7f1e8;--paper:#fffdf9;
+  --ink:#241b15;--muted:#756a60;--line:#eadfd3;--green:#2d7a55;--red:#a52b20;
+}
+*{box-sizing:border-box}
+html{background:var(--cream)}
+body{margin:0;background:linear-gradient(180deg,#f4eadf 0,#fbf8f3 360px);color:var(--ink);
+font-family:Tahoma,"Noto Sans Arabic",Arial,sans-serif;min-height:100vh}
+button,input{font:inherit}
+.appbar{background:linear-gradient(135deg,var(--coffee),var(--coffee2));color:#fff;padding:18px 16px 20px;
+box-shadow:0 5px 18px #5d2d091f;position:sticky;top:0;z-index:20}
+.brand{display:flex;align-items:center;gap:11px;max-width:760px;margin:auto}
+.logo{width:42px;height:42px;border-radius:13px;background:#ffffff20;border:1px solid #ffffff35;display:grid;place-items:center;font-size:24px}
+.brand h1{font-size:21px;margin:0}.brand p{font-size:12px;margin:3px 0 0;opacity:.86}
+main{max-width:760px;margin:auto;padding:14px 12px 40px}
+.card{background:rgba(255,253,249,.96);border:1px solid #fff;border-radius:20px;padding:15px;margin:0 0 13px;
+box-shadow:0 5px 20px #5d3a1b10}
+.section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:13px}
+.section-head h2{font-size:16px;margin:0}.step{font-size:11px;color:var(--coffee);background:#f4e3d2;padding:5px 8px;border-radius:999px;font-weight:bold}
+.product-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.product{position:relative;border:1px solid var(--line);border-radius:16px;padding:11px;background:#fff;transition:.15s}
+.product:focus-within{border-color:#d89a62;box-shadow:0 0 0 3px #c56a1615}
+.product label{display:block;font-size:13px;font-weight:800;margin-bottom:7px}
+.product input{width:100%;border:0;outline:0;background:#faf7f3;border-radius:11px;padding:12px 10px;font-size:20px;font-weight:700;color:var(--ink)}
+.unit{position:absolute;left:20px;bottom:17px;color:var(--muted);font-size:12px;pointer-events:none}
+.waste-row{margin-top:12px;background:#faf5ef;border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.waste-row .label{font-size:13px;font-weight:700}.waste-control{display:flex;align-items:center;gap:6px}
+.waste-control input{width:76px;border:1px solid var(--line);border-radius:9px;padding:8px;text-align:center;font-weight:700;background:#fff}
+.primary{width:100%;border:0;background:var(--coffee);color:#fff;padding:15px;border-radius:14px;margin-top:12px;font-weight:800;font-size:16px;box-shadow:0 5px 13px #9b4f0b2e}
+.primary:active{transform:translateY(1px)}
+.total-banner{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#fff8ed,#f8eadb);
+border:1px solid #edd2b5;border-radius:15px;padding:12px 14px;margin-bottom:12px}
+.total-banner span{font-size:12px;color:var(--muted)}.total-banner strong{font-size:20px;color:var(--coffee)}
+table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border:1px solid var(--line);border-radius:13px;background:#fff;font-size:13px}
+th,td{padding:10px 8px;border-bottom:1px solid #f0e8df;text-align:right}
+th{background:#faf5ef;font-size:12px;color:#655a52}tr:last-child td{border-bottom:0}
+.num{direction:ltr;text-align:left;white-space:nowrap}
+.kg-main{font-weight:800}.grams{color:var(--muted);font-size:11px}
+.details{margin-top:12px}.details summary{cursor:pointer;font-weight:800;color:#4e4036;padding:7px 2px}
+.product-detail{margin-top:9px}.empty{padding:18px;text-align:center;color:var(--muted);font-size:13px}
+.note{font-size:11px;line-height:1.7;color:var(--muted);margin:10px 2px 0}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.btn{border:0;border-radius:12px;padding:12px;font-weight:700;font-size:13px}.secondary{background:#efe7de;color:#49382c}.danger{background:#f8dfda;color:var(--red)}
+.install{display:none;background:#fff3e4;color:var(--coffee);border:1px solid #edc89f;width:100%;margin-top:10px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;
+background:#2a211b;color:#fff;padding:10px 15px;border-radius:999px;font-size:12px;z-index:50;transition:.25s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(max-width:390px){.product-grid{gap:8px}.product{padding:9px}.product input{font-size:18px}}
+@media(min-width:700px){main{padding-top:20px}.product-grid{grid-template-columns:repeat(4,1fr)}}
+@media print{.appbar,.actions,.install,.primary,.waste-row{display:none!important}body{background:#fff}.card{box-shadow:none;border:0}}
+.history-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}.history-meta{display:flex;flex-direction:column;gap:5px;min-width:0}.history-meta b{overflow-wrap:anywhere}.history-meta small{color:var(--muted);font-size:11px}.history-actions{display:flex;gap:5px;flex-wrap:wrap}.history-actions .btn{padding:8px;font-size:11px}@media(max-width:420px){.history-item{align-items:flex-start;flex-direction:column}.history-actions{width:100%}.history-actions .btn{flex:1}}
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="brand">
+    <img src="./icon-192.png" alt="بن الحلو" style="width: 100px; height: 100px; border-radius: 13px; object-fit: cover; border: 1px solid #ffffff35;">
+    <div><h1>بن الحلو</h1><p>حاسبة خامات طلبيات القهوة</p></div>
+  </div>
+</header>
+
+<main>
+<section class="card">
+  <div class="section-head"><h2>الطلبية</h2><span class="step">1</span></div>
+  <label style="display:block;font-size:13px;font-weight:700;margin:0 0 10px">اسم الطلبية / الكافيه (اختياري)<input id="orderName" type="text" maxlength="100" placeholder="مثال: طلبية كافيه ..." style="width:100%;margin-top:6px;border:1px solid var(--line);border-radius:11px;padding:10px;background:#fff"></label><div class="product-grid">
+    <div class="product"><label for="plain">سادة</label><input id="plain" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>
+    <div class="product"><label for="hawaji">محوجة</label><input id="hawaji" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>
+    <div class="product"><label for="french">فرنسية</label><input id="french" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>
+    <div class="product"><label for="hazelnut">بندق</label><input id="hazelnut" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>
+  </div>
+  <div class="waste-row">
+    <div class="label">هالك التحميص للبن والحبهان</div>
+    <div class="waste-control"><input id="waste" type="number" min="0" max="99.9" step="0.1" value="20" inputmode="decimal"><b>%</b></div>
+  </div>
+  <button class="primary" onclick="calculate()">احسب الخامات المطلوبة</button>
+  </section>
+
+<section class="card">
+  <div class="section-head"><h2>الخامات المطلوبة</h2><span class="step">2</span></div>
+  <div id="summary"><div class="empty">أدخل كميات الطلبية ثم اضغط «احسب الخامات المطلوبة».</div></div>
+</section>
+
+<section class="card">
+  <div class="section-head"><h2>تفاصيل الحساب</h2><span class="step">3</span></div>
+  <div id="details"><div class="empty">ستظهر تفاصيل كل منتج هنا.</div></div>
+</section>
+
+<section class="card">
+  <div class="section-head"><h2>أدوات</h2><span class="step">4</span></div>
+  <div class="actions">
+    <button class="btn secondary" onclick="saveOrder()">💾 حفظ الطلبية</button>
+    <button class="btn secondary" onclick="loadOrder()">↩ استرجاع آخر طلبية</button>
+    <button class="btn secondary" onclick="printResult()">🖨 طباعة / PDF</button>
+    <button class="btn danger" onclick="clearAll()">مسح الكميات</button>
+  </div>
+</section>
+<section class="card"><div class="section-head"><h2>سجل الطلبيات المحفوظة</h2><span class="step" id="historyCount">0</span></div><p class="note">السجل محفوظ على قاعدة البيانات ويظهر على جميع الأجهزة للحسابات الإدارية.</p><div class="actions" style="margin-bottom:10px"><button class="btn secondary" id="refreshHistoryBtn">تحديث السجل ↻</button></div><div id="historyList"><div class="empty">جارٍ تحميل السجل...</div></div></section>
+</main>
+<div id="toast" class="toast"></div>
+
+<script>
+const recipes={
+plain:{name:"سادة",items:{"بن إندونيسي":.750,"بن هندي":.125,"بن برازيلي":.125}},
+hawaji:{name:"محوجة",items:{"بن إندونيسي":.700,"بن هندي":.116,"بن برازيلي":.116,"حبهان":.045,"قرنفل":.0045,"زهر ورد":.0185}},
+french:{name:"فرنسية",items:{"بن إندونيسي":.255,"بن هندي":.0425,"بن برازيلي":.0425,"لبن بودرة":.660}},
+hazelnut:{name:"بندق",items:{"بن إندونيسي":.255,"بن هندي":.0425,"بن برازيلي":.0425,"لبن بودرة":.600,"بندق حصاة":.045,"نكهة بندق":.015}}
+};
+const roastLossItems=new Set(["بن إندونيسي","بن هندي","بن برازيلي","حبهان"]);
+let lastResult=null, deferredPrompt=null;
+function q(id){return Math.max(0,parseFloat(document.getElementById(id).value)||0)}
+function fmt(x){return Math.abs(x)<1e-9?"0":x.toFixed(3).replace(/\.?0+$/,"")}
+function raw(output,item,waste){return roastLossItems.has(item)?output/(1-waste/100):output}
+function calculate(){
+  const orders={}; for(const k of Object.keys(recipes)){const v=q(k);if(v>0)orders[k]=v}
+  const waste=Math.min(99.9,Math.max(0,parseFloat(document.getElementById("waste").value)||0));
+  const totals={}, details=[];
+  for(const [k,qty] of Object.entries(orders)){
+    const r=recipes[k], rows=[];
+    for(const [item,ratio] of Object.entries(r.items)){
+      const output=qty*ratio, start=raw(output,item,waste);
+      totals[item]=(totals[item]||0)+start; rows.push({item,ratio,output,start});
+    }
+    details.push({name:r.name,qty,rows});
+  }
+  const totalOrder=Object.values(orders).reduce((a,b)=>a+b,0);
+  lastResult={orders,waste,totals,details,totalOrder};
+  if(!totalOrder){
+    document.getElementById("summary").innerHTML='<div class="empty">أدخل كمية واحدة على الأقل.</div>';
+    document.getElementById("details").innerHTML='<div class="empty">ستظهر تفاصيل كل منتج هنا.</div>'; return;
+  }
+  const rows=Object.entries(totals).map(([item,v])=>`<tr><td><b>${item}</b></td><td class="num kg-main">${fmt(v)} كجم<br><span class="grams">${fmt(v*1000)} جم</span></td></tr>`).join("");
+  document.getElementById("summary").innerHTML=`
+    <div class="total-banner"><span>إجمالي وزن الطلبية</span><strong>${fmt(totalOrder)} كجم</strong></div>
+    <table><thead><tr><th>الخامة</th><th>الكمية المطلوبة</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="note">الهالك ${fmt(waste)}% مطبق على البن الإندونيسي والهندي والبرازيلي والحبهان فقط.</p>`;
+  document.getElementById("details").innerHTML=details.map(d=>`
+    <details class="details"><summary>${d.name} — ${fmt(d.qty)} كجم</summary>
+      <div class="product-detail"><table><thead><tr><th>الخامة</th><th>الوصفة/كجم</th><th>خام البداية</th></tr></thead><tbody>
+      ${d.rows.map(x=>`<tr><td>${x.item}</td><td class="num">${fmt(x.ratio)} كجم</td><td class="num">${fmt(x.start)} كجم</td></tr>`).join("")}
+      </tbody></table></div>
+    </details>`).join("");
+  toast("تم تحديث حساب الخامات");
+}
+function saveOrder(){
+ localStorage.setItem("coffeeOrder",JSON.stringify({
+  plain:document.getElementById("plain").value,hawaji:document.getElementById("hawaji").value,
+  french:document.getElementById("french").value,hazelnut:document.getElementById("hazelnut").value,waste:document.getElementById("waste").value
+ })); toast("تم حفظ الطلبية على الجهاز");
+}
+function loadOrder(){
+ const x=JSON.parse(localStorage.getItem("coffeeOrder")||"null");
+ if(!x){toast("لا توجد طلبية محفوظة");return}
+ ["plain","hawaji","french","hazelnut","waste"].forEach(id=>document.getElementById(id).value=x[id]??0); calculate(); toast("تم استرجاع آخر طلبية");
+}
+function clearAll(){["plain","hawaji","french","hazelnut"].forEach(id=>document.getElementById(id).value="");calculate();toast("تم مسح الكميات")}
+function printResult(){if(!lastResult||!lastResult.totalOrder)calculate();if(lastResult&&lastResult.totalOrder)window.print()}
+function toast(t){const e=document.getElementById("toast");e.textContent=t;e.classList.add("show");setTimeout(()=>e.classList.remove("show"),1800)}
+calculate();
+</script>
+
+<script>
+(function(){
+ let savedHistory=[];
+ const $=id=>document.getElementById(id);
+ function resize(){parent.postMessage({type:"elhelw-pc-resize",height:document.documentElement.scrollHeight},"*")}
+ function refresh(){parent.postMessage({type:"elhelw-pc-refresh"},"*")}
+ function restore(row){
+  const x=row.inputs||{};
+  ["plain","hawaji","french","hazelnut","waste"].forEach(id=>$(id).value=x[id]??(id==="waste"?20:""));
+  $("orderName").value=x.name||"";
+  calculate();toast("تم استرجاع الطلبية");resize();
+ }
+ function renderHistory(rows){
+  savedHistory=Array.isArray(rows)?rows:[];
+  $("historyCount").textContent=String(savedHistory.length);
+  $("historyList").innerHTML=savedHistory.length?savedHistory.map(row=>'<article class="history-item"><div class="history-meta"><b>'+String(row.label||"طلبية محفوظة").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))+'</b><small>'+new Date(row.created_at).toLocaleString("ar-EG")+' · '+Number(row.result?.totalOrder||0).toFixed(3)+' كجم</small></div><div class="history-actions"><button class="btn secondary" data-open="'+row.id+'">فتح</button><button class="btn secondary" data-print="'+row.id+'">طباعة</button><button class="btn danger" data-delete="'+row.id+'">حذف</button></div></article>').join(""):'<div class="empty">لا توجد طلبيات محفوظة حتى الآن.</div>';
+  $("historyList").querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>{const r=savedHistory.find(x=>x.id===b.dataset.open);if(r)restore(r)});
+  $("historyList").querySelectorAll("[data-print]").forEach(b=>b.onclick=()=>{const r=savedHistory.find(x=>x.id===b.dataset.print);if(r){restore(r);setTimeout(()=>window.print(),200)}});
+  $("historyList").querySelectorAll("[data-delete]").forEach(b=>b.onclick=()=>{if(confirm("هل تريد حذف هذه الطلبية؟"))parent.postMessage({type:"elhelw-pc-delete",id:b.dataset.delete},"*")});
+  resize();
+ }
+ addEventListener("message",e=>{
+  const d=e.data||{};
+  if(d.type==="elhelw-pc-history")renderHistory(d.rows);
+  if(d.type==="elhelw-pc-saved"){toast("تم حفظ الطلبية");refresh()}
+  if(d.type==="elhelw-pc-deleted"){toast("تم حذف الطلبية");refresh()}
+  if(d.type==="elhelw-pc-error")toast("تعذر تنفيذ العملية: "+d.message);
+ });
+ window.saveOrder=function(){
+  calculate();if(!lastResult||!lastResult.totalOrder){toast("أدخل كمية واحدة على الأقل");return}
+  const inputs={name:$("orderName").value.trim(),plain:$("plain").value,hawaji:$("hawaji").value,french:$("french").value,hazelnut:$("hazelnut").value,waste:$("waste").value};
+  parent.postMessage({type:"elhelw-pc-save",label:inputs.name||("طلبية "+new Date().toLocaleString("ar-EG")),inputs,result:lastResult},"*");
+ };
+ window.loadOrder=function(){if(!savedHistory.length){refresh();toast("جارٍ تحميل السجل");return}restore(savedHistory[0])};
+ $("refreshHistoryBtn").onclick=()=>{refresh();toast("جارٍ تحديث السجل")};
+ refresh();setTimeout(resize,200);
+})();
+</script>
+</body>
+</html>
