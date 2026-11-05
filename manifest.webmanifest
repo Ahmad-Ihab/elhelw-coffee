@@ -1,6 +1,6 @@
 {
-  "name": "ELHELW COFFEE",
-  "short_name": "ELHELW",
+  "name": "Elhelw Distribution",
+  "short_name": "Elhelw Dist.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
