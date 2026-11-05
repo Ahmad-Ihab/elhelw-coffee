@@ -129,8 +129,8 @@ let gradle = fs.readFileSync(gradlePath, "utf8");
 if (!/versionCode\s+\d+/.test(gradle) || !/versionName\s+"[^"]+"/.test(gradle)) {
   throw new Error("Could not find versionCode/versionName in app/build.gradle.");
 }
-gradle = gradle.replace(/versionCode\s+\d+/, "versionCode 24");
-gradle = gradle.replace(/versionName\s+"[^"]+"/, 'versionName "1.2.3"');
+gradle = gradle.replace(/versionCode\s+\d+/, "versionCode 25");
+gradle = gradle.replace(/versionName\s+"[^"]+"/, 'versionName "1.2.4"');
 fs.writeFileSync(gradlePath, gradle, "utf8");
-console.log("Configured Android app version 1.2.3 (versionCode 24).");
+console.log("Configured Android app version 1.2.4 (versionCode 25).");
 console.log("Registered native InvoicePdf plugin in " + mainPath);
