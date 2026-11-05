@@ -152,8 +152,8 @@
       }catch(x){fail(x)}};
     });
     $("add-dist").onclick=()=>{showForm(formPanel("account-form","إنشاء حساب جديد",field("الاسم الثلاثي","full_name")+field("البريد الإلكتروني","email","email")+field("كلمة المرور","password","password",'minlength="8" required')+selectField("نوع الحساب","role",[{value:"distributor",label:"موزع"},{value:"admin",label:"مدير"}])+field("رقم البطاقة الشخصية (إجباري للموزع)","national_id","text",'inputmode="numeric" maxlength="14" minlength="14" pattern="[0-9]{14}"')+field("رقم الهاتف (للموزع)","phone")+field("الصورة الشخصية (اختياري للموزع)","avatar_file","file",'accept="image/jpeg,image/png,image/webp"')));
-      const form=$("account-form"),idInput=form.elements.national_id,roleInput=form.elements.role;
-      roleInput.addEventListener("change",()=>{idInput.required=roleInput.value==="distributor";});
+      const form=$("account-form"),idInput=form.elements.national_id,roleInput=form.elements.role,avatarInput=form.elements.avatar_file;
+      const syncRole=()=>{idInput.required=roleInput.value==="distributor";avatarInput.closest("label").hidden=roleInput.value!=="distributor";};roleInput.addEventListener("change",syncRole);syncRole();
       form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),submit=form.querySelector("button"),name=String(d.get("full_name")||"").trim(),nationalId=String(d.get("national_id")||"").trim(),role=String(d.get("role")||"");
         if(name.split(/\s+/).filter(Boolean).length<3)return toast("اكتب الاسم الثلاثي كاملًا");
         if(role==="distributor"&&!/^\d{14}$/.test(nationalId))return toast("رقم البطاقة للموزع يجب أن يتكون من 14 رقمًا");
@@ -164,12 +164,13 @@
         try{const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error("انتهت الجلسة. سجل الدخول مرة أخرى.");
           const response=await fetch(cfg.SUPABASE_URL+"/functions/v1/admin-create-user",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":cfg.SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({full_name:name,national_id:nationalId||null,email:String(d.get("email")).trim(),password:d.get("password"),role,phone:String(d.get("phone")||"").trim()})});
           const result=await response.json();if(!response.ok)throw new Error(result.error||"تعذر إنشاء الحساب");
+          let identityWarning="";const {error:identityError}=await sb.from("profiles").update({national_id:nationalId||null}).eq("id",result.user_id);if(identityError){console.error(identityError);identityWarning=" لكن تعذر حفظ رقم البطاقة؛ راجع بيانات الحساب قبل تسليمه للموزع."}
           let photoWarning="";
           if(avatar?.size){try{const ext={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"}[avatar.type],path=result.user_id+"/"+Date.now()+"."+ext;
             const {error:uploadError}=await sb.storage.from("profile-avatars").upload(path,avatar,{cacheControl:"3600",upsert:false,contentType:avatar.type});if(uploadError)throw uploadError;
             const {error:updateError}=await sb.from("profiles").update({avatar_path:path}).eq("id",result.user_id);if(updateError){await sb.storage.from("profile-avatars").remove([path]);throw updateError;}
           }catch(photoError){console.error(photoError);photoWarning=" لكن تعذر رفع الصورة؛ سيُطلب من المستخدم رفعها عند أول دخول."}}
-          toast("تم إنشاء الحساب وربطه بنجاح"+photoWarning);render();
+          toast("تم إنشاء الحساب وربطه بنجاح"+identityWarning+photoWarning);render();
         }catch(x){fail(x);submit.disabled=false}};
     };
   }
