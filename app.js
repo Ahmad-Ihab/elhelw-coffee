@@ -43,7 +43,7 @@
       if(de)throw de;distributor=d;
     }
     $("auth-view").classList.add("hidden");$("workspace").classList.remove("hidden");
-    if(profile.role==="distributor" && (profile.full_name.trim().split(/\\s+/).filter(Boolean).length<3 || !/^\\d{14}$/.test(profile.national_id||"")))activeTab="profile";
+    if(profile.role==="distributor" && ((profile.full_name||"").trim().split(/\s+/).filter(Boolean).length<3 || !/^\d{14}$/.test(profile.national_id||"")))activeTab="profile";
     await refreshUserArea();
     $("role-label").textContent=profile.role==="admin"?"ADMIN WORKSPACE":"DISTRIBUTOR WORKSPACE";
     $("welcome-title").textContent=`أهلاً ${profile.full_name}`;
@@ -447,9 +447,9 @@
       const data=new FormData(details);
       const fullName=String(data.get("full_name")||"").trim();
       const nationalId=String(data.get("national_id")||"").trim();
-      if(required && fullName.split(/\\s+/).filter(Boolean).length<3)return toast("اكتب الاسم الثلاثي كاملًا");
-      if(required && !/^\\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
-      if(nationalId && !/^\\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
+      if(required && fullName.split(/\s+/).filter(Boolean).length<3)return toast("اكتب الاسم الثلاثي كاملًا");
+      if(required && !/^\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
+      if(nationalId && !/^\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
       const btn=details.querySelector('button[type="submit"],button:not([type])');if(btn)btn.disabled=true;
       try{
         const {error}=await sb.rpc("update_my_profile",{p_full_name:fullName,p_national_id:nationalId||null});
