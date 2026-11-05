@@ -104,8 +104,8 @@ jobs:
         id: app_version
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
         run: |
-          VERSION_NAME=$(grep -oP 'versionName "\\K[^"]+' android/app/build.gradle)
-          VERSION_CODE=$(grep -oP 'versionCode \\K[0-9]+' android/app/build.gradle)
+          VERSION_NAME=$(grep -oP 'versionName "\K[^"]+' android/app/build.gradle)
+          VERSION_CODE=$(grep -oP 'versionCode \K[0-9]+' android/app/build.gradle)
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
