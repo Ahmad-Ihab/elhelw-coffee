@@ -108,6 +108,7 @@ const replacementMain = [
 "public class MainActivity extends BridgeActivity {",
 "  @Override public void onCreate(Bundle savedInstanceState) {",
 "    registerPlugin(InvoicePdfPlugin.class);",
+"    registerPlugin(AppUpdaterPlugin.class);",
 "    super.onCreate(savedInstanceState);",
 "  }",
 "}"
