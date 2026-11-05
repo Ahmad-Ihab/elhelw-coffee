@@ -62,7 +62,7 @@ background:#2a211b;color:#fff;padding:10px 15px;border-radius:999px;font-size:12
 <body>
 <header class="appbar">
   <div class="brand">
-    <img src="./icon-192.png" alt="بن الحلو" style="width: 100px; height: 100px; border-radius: 13px; object-fit: cover; border: 1px solid #ffffff35;">
+    <img src="../assets/icon-192.png" alt="بن الحلو" style="width: 100px; height: 100px; border-radius: 13px; object-fit: cover; border: 1px solid #ffffff35;">
     <div><h1>بن الحلو</h1><p>حاسبة خامات طلبيات القهوة</p></div>
   </div>
 </header>
@@ -161,7 +161,12 @@ function loadOrder(){
  ["plain","hawaji","french","hazelnut","waste"].forEach(id=>document.getElementById(id).value=x[id]??0); calculate(); toast("تم استرجاع آخر طلبية");
 }
 function clearAll(){["plain","hawaji","french","hazelnut"].forEach(id=>document.getElementById(id).value="");calculate();toast("تم مسح الكميات")}
-function printResult(){if(!lastResult||!lastResult.totalOrder)calculate();if(lastResult&&lastResult.totalOrder)window.print()}
+function printResult(){
+  if(!lastResult||!lastResult.totalOrder)calculate();
+  if(!lastResult||!lastResult.totalOrder){toast("احسب الكميات أولاً قبل الطباعة");return}
+  const filename="ELHELW-PRODUCTION-"+new Date().toISOString().slice(0,10)+".pdf";
+  parent.postMessage({type:"elhelw-pc-print",html:"<!doctype html>"+document.documentElement.outerHTML,filename},"*");
+}
 function toast(t){const e=document.getElementById("toast");e.textContent=t;e.classList.add("show");setTimeout(()=>e.classList.remove("show"),1800)}
 calculate();
 </script>
@@ -183,7 +188,7 @@ calculate();
   $("historyCount").textContent=String(savedHistory.length);
   $("historyList").innerHTML=savedHistory.length?savedHistory.map(row=>'<article class="history-item"><div class="history-meta"><b>'+String(row.label||"طلبية محفوظة").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))+'</b><small>'+new Date(row.created_at).toLocaleString("ar-EG")+' · '+Number(row.result?.totalOrder||0).toFixed(3)+' كجم</small></div><div class="history-actions"><button class="btn secondary" data-open="'+row.id+'">فتح</button><button class="btn secondary" data-print="'+row.id+'">طباعة</button><button class="btn danger" data-delete="'+row.id+'">حذف</button></div></article>').join(""):'<div class="empty">لا توجد طلبيات محفوظة حتى الآن.</div>';
   $("historyList").querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>{const r=savedHistory.find(x=>x.id===b.dataset.open);if(r)restore(r)});
-  $("historyList").querySelectorAll("[data-print]").forEach(b=>b.onclick=()=>{const r=savedHistory.find(x=>x.id===b.dataset.print);if(r){restore(r);setTimeout(()=>window.print(),200)}});
+  $("historyList").querySelectorAll("[data-print]").forEach(b=>b.onclick=()=>{const r=savedHistory.find(x=>x.id===b.dataset.print);if(r){restore(r);setTimeout(()=>printResult(),300)}});
   $("historyList").querySelectorAll("[data-delete]").forEach(b=>b.onclick=()=>{if(confirm("هل تريد حذف هذه الطلبية؟"))parent.postMessage({type:"elhelw-pc-delete",id:b.dataset.delete},"*")});
   resize();
  }
@@ -193,6 +198,7 @@ calculate();
   if(d.type==="elhelw-pc-saved"){toast("تم حفظ الطلبية");refresh()}
   if(d.type==="elhelw-pc-deleted"){toast("تم حذف الطلبية");refresh()}
   if(d.type==="elhelw-pc-error")toast("تعذر تنفيذ العملية: "+d.message);
+  if(d.type==="elhelw-pc-printed")toast("تم إرسال الطلب إلى نافذة الطباعة");
  });
  window.saveOrder=function(){
   calculate();if(!lastResult||!lastResult.totalOrder){toast("أدخل كمية واحدة على الأقل");return}
