@@ -26,6 +26,10 @@ on:
       - "scripts/**"
       - ".github/workflows/android-build.yml"
 
+concurrency:
+  group: android-release
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
