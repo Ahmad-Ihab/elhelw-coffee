@@ -74,7 +74,7 @@
     if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك باستخدام حاسبة الإنتاج.</div>');
     setContent('<div id="production-calculator"></div>');
     if(typeof window.renderElhelwProductionCalculator!=="function")throw new Error("ملف حاسبة الإنتاج لم يتم تحميله. حدّث التطبيق وحاول مرة أخرى.");
-    window.renderElhelwProductionCalculator(sessionUser.id);
+    window.renderElhelwProductionCalculator(sessionUser.id,sb);
   }
   async function adminTools(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
