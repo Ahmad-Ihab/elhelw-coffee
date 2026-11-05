@@ -58,6 +58,7 @@
     $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(!profileComplete() && b.dataset.tab!=="profile")return toast("أكمل الاسم الثلاثي والصورة الشخصية"+(profile.role==="distributor"?" ورقم البطاقة":"")+" أولاً");activeTab=b.dataset.tab;renderTabs();render()});
   }
   async function render(){
+    if(profile && !profileComplete() && activeTab!=="profile"){activeTab="profile";renderTabs();return profilePage();}
     try{
       if(activeTab==="dashboard")return dashboard();
       if(activeTab==="products")return products();
