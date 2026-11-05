@@ -25,7 +25,7 @@
   function selectField(label,name,options){return `<label class="field">${label}<select name="${name}" required><option value="">اختر</option>${options.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</select></label>`}
   function formPanel(id,title,fields,submitLabel="حفظ"){return `<form id="${id}" class="form-panel"><h3>${title}</h3><div class="form-grid">${fields}</div><div class="form-actions"><button class="primary">${submitLabel}</button><button type="button" class="secondary" data-cancel>إلغاء</button></div></form>`}
   function showForm(html){$("content").insertAdjacentHTML("afterbegin",html);$("content").querySelector("[data-cancel]")?.addEventListener("click",e=>e.target.closest("form").remove())}
-  function profileComplete(){const nameOk=(profile?.full_name||"").trim().split(/\s+/).filter(Boolean).length>=3;const photoOk=!!profile?.avatar_path;const idOk=profile?.role==="distributor"?/^\d{14}$/.test(profile?.national_id||""):(!profile?.national_id||/^\d{14}$/.test(profile.national_id));return nameOk&&photoOk&&idOk;}
+  function profileComplete(){const nameOk=!!(profile?.full_name||"").trim();const photoOk=!!profile?.avatar_path;const idOk=profile?.role==="distributor"?/^\d{14}$/.test(profile?.national_id||""):(!profile?.national_id||/^\d{14}$/.test(profile.national_id));return nameOk&&photoOk&&idOk;}
   async function signedAvatarUrl(path){if(!path)return "";const {data,error}=await sb.storage.from("profile-avatars").createSignedUrl(path,3600);if(error)throw error;return data?.signedUrl||"";}
   async function refreshUserArea(){const url=await signedAvatarUrl(profile.avatar_path).catch(()=> "");const photo=url?`<img class="user-avatar" src="${url}" alt="الصورة الشخصية">`:"";$("user-area").innerHTML=`${photo}<span>${esc(profile.full_name)} · ${profile.role==="admin"?"إدارة":"موزع"}</span><button id="logout" class="secondary">خروج</button>`;$("logout").onclick=()=>sb.auth.signOut();}
   async function boot(){
@@ -55,7 +55,7 @@
   function renderTabs(){
     const tabs=profile.role==="admin"?adminTabs:distTabs;
     $("tabs").innerHTML=tabs.map(([id,label])=>`<button class="tab ${activeTab===id?"active":""}" data-tab="${id}">${label}</button>`).join("");
-    $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(!profileComplete() && b.dataset.tab!=="profile")return toast("أكمل الاسم الثلاثي والصورة الشخصية"+(profile.role==="distributor"?" ورقم البطاقة":"")+" أولاً");activeTab=b.dataset.tab;renderTabs();render()});
+    $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(!profileComplete() && b.dataset.tab!=="profile")return toast("أكمل اسم الحساب والصورة الشخصية"+(profile.role==="distributor"?" ورقم البطاقة":"")+" أولاً");activeTab=b.dataset.tab;renderTabs();render()});
   }
   async function render(){
     if(profile && !profileComplete() && activeTab!=="profile"){activeTab="profile";renderTabs();return profilePage();}
@@ -152,20 +152,21 @@
         toast("تم تحديث بيانات الموزع");render();
       }catch(x){fail(x)}};
     });
-    $("add-dist").onclick=()=>{showForm(formPanel("account-form","إنشاء حساب جديد",field("الاسم الثلاثي","full_name")+field("البريد الإلكتروني","email","email")+field("كلمة المرور","password","password",'minlength="8" required')+selectField("نوع الحساب","role",[{value:"distributor",label:"موزع"},{value:"admin",label:"مدير"}])+field("رقم البطاقة الشخصية (إجباري للموزع)","national_id","text",'inputmode="numeric" maxlength="14" minlength="14" pattern="[0-9]{14}"')+field("رقم الهاتف (للموزع)","phone")+field("الصورة الشخصية (اختياري للموزع)","avatar_file","file",'accept="image/jpeg,image/png,image/webp"')));
-      const form=$("account-form"),idInput=form.elements.national_id,roleInput=form.elements.role,avatarInput=form.elements.avatar_file;
-      const syncRole=()=>{idInput.required=roleInput.value==="distributor";avatarInput.closest("label").hidden=roleInput.value!=="distributor";};roleInput.addEventListener("change",syncRole);syncRole();
-      form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),submit=form.querySelector("button"),name=String(d.get("full_name")||"").trim(),nationalId=String(d.get("national_id")||"").trim(),role=String(d.get("role")||"");
-        if(name.split(/\s+/).filter(Boolean).length<3)return toast("اكتب الاسم الثلاثي كاملًا");
+    $("add-dist").onclick=()=>{showForm(formPanel("account-form","إنشاء حساب جديد",field("اسم الحساب (الاسم الظاهر)","full_name","text",'required maxlength="120"')+field("الاسم الثلاثي كما في البطاقة (للموزع)","legal_full_name","text",'maxlength="160"')+field("البريد الإلكتروني","email","email")+field("كلمة المرور","password","password",'minlength="8" required')+selectField("نوع الحساب","role",[{value:"distributor",label:"موزع"},{value:"admin",label:"مدير"}])+field("رقم البطاقة الشخصية (إجباري للموزع)","national_id","text",'inputmode="numeric" maxlength="14" minlength="14" pattern="[0-9]{14}"')+field("رقم الهاتف (للموزع)","phone")+field("الصورة الشخصية (اختياري للموزع)","avatar_file","file",'accept="image/jpeg,image/png,image/webp"')));
+      const form=$("account-form"),idInput=form.elements.national_id,roleInput=form.elements.role,avatarInput=form.elements.avatar_file,legalInput=form.elements.legal_full_name;
+      const syncRole=()=>{idInput.required=roleInput.value==="distributor";legalInput.required=roleInput.value==="distributor";legalInput.closest("label").hidden=roleInput.value!=="distributor";avatarInput.closest("label").hidden=roleInput.value!=="distributor";};roleInput.addEventListener("change",syncRole);syncRole();
+      form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),submit=form.querySelector("button"),name=String(d.get("full_name")||"").trim(),legalName=String(d.get("legal_full_name")||"").trim(),nationalId=String(d.get("national_id")||"").trim(),role=String(d.get("role")||"");
+        if(!name)return toast("اكتب اسم الحساب");
+        if(role==="distributor"&&!legalName)return toast("اكتب الاسم الثلاثي كما في البطاقة");
         if(role==="distributor"&&!/^\d{14}$/.test(nationalId))return toast("رقم البطاقة للموزع يجب أن يتكون من 14 رقمًا");
         if(nationalId&&!/^\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
         const avatar=d.get("avatar_file");if(avatar?.size>3*1024*1024)return toast("حجم الصورة يجب ألا يتجاوز 3 ميجابايت");
         if(avatar?.size&&!["image/jpeg","image/png","image/webp"].includes(avatar.type))return toast("اختر صورة JPG أو PNG أو WebP");
         submit.disabled=true;
         try{const {data:{session}}=await sb.auth.getSession();if(!session)throw new Error("انتهت الجلسة. سجل الدخول مرة أخرى.");
-          const response=await fetch(cfg.SUPABASE_URL+"/functions/v1/admin-create-user",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":cfg.SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({full_name:name,national_id:nationalId||null,email:String(d.get("email")).trim(),password:d.get("password"),role,phone:String(d.get("phone")||"").trim()})});
+          const response=await fetch(cfg.SUPABASE_URL+"/functions/v1/admin-create-user",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":cfg.SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({full_name:name,legal_full_name:legalName||null,national_id:nationalId||null,email:String(d.get("email")).trim(),password:d.get("password"),role,phone:String(d.get("phone")||"").trim()})});
           const result=await response.json();if(!response.ok)throw new Error(result.error||"تعذر إنشاء الحساب");
-          let identityWarning="";const {error:identityError}=await sb.from("profiles").update({national_id:nationalId||null}).eq("id",result.user_id);if(identityError){console.error(identityError);identityWarning=" لكن تعذر حفظ رقم البطاقة؛ راجع بيانات الحساب قبل تسليمه للموزع."}
+          let identityWarning="";const {error:identityError}=await sb.from("profiles").update({national_id:nationalId||null,legal_full_name:legalName||null}).eq("id",result.user_id);if(identityError){console.error(identityError);identityWarning=" لكن تعذر حفظ رقم البطاقة؛ راجع بيانات الحساب قبل تسليمه للموزع."}
           let photoWarning="";
           if(avatar?.size){try{const ext={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"}[avatar.type],path=result.user_id+"/"+Date.now()+"."+ext;
             const {error:uploadError}=await sb.storage.from("profile-avatars").upload(path,avatar,{cacheControl:"3600",upsert:false,contentType:avatar.type});if(uploadError)throw uploadError;
@@ -177,12 +178,12 @@
   }
   async function peopleDirectory(){
     if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك بعرض دليل الأفراد.</div>');
-    const [people,ds]=await Promise.all([rows("profiles","id,full_name,role,national_id,avatar_path,created_at"),rows("distributors","user_id,phone")]);
+    const [people,ds]=await Promise.all([rows("profiles","id,full_name,legal_full_name,role,national_id,avatar_path,created_at"),rows("distributors","user_id,phone")]);
     const phoneByUser=Object.fromEntries(ds.map(d=>[d.user_id,d.phone||""]));
     const prepared=await Promise.all(people.map(async p=>({...p,avatarUrl:await signedAvatarUrl(p.avatar_path).catch(()=>""),phone:phoneByUser[p.id]||""})));
     const card=p=>'<article class="panel-card person-card"><div class="person-summary">'+(p.avatarUrl?'<img class="profile-photo" src="'+p.avatarUrl+'" alt="صورة '+esc(p.full_name)+'">':'<div class="profile-photo profile-photo-empty">👤</div>')+'<div><h3>'+esc(p.full_name||"بدون اسم")+'</h3><p class="muted">'+(p.role==="admin"?"أدمن":"موزع")+' · '+(p.phone?esc(p.phone):"لا يوجد هاتف")+'</p><p class="hint person-id">معرّف الحساب: <code>'+esc(p.id)+'</code></p><button class="secondary" data-copy-person="'+p.id+'">نسخ المعرّف</button></div><button class="secondary" data-person="'+p.id+'">عرض التفاصيل</button></div></article>';
-    const bindDetails=()=>{$("people-list").querySelectorAll("[data-person]").forEach(btn=>btn.onclick=()=>{const p=prepared.find(x=>x.id===btn.dataset.person);$("person-details").innerHTML='<section class="panel-card person-details">'+(p.avatarUrl?'<img class="profile-photo" src="'+p.avatarUrl+'" alt="الصورة الشخصية">':'<div class="profile-photo profile-photo-empty">👤</div>')+'<h3>'+esc(p.full_name||"بدون اسم")+'</h3><p><b>نوع الحساب:</b> '+(p.role==="admin"?"أدمن":"موزع")+'</p><p><b>معرّف الحساب الكامل:</b> <code>'+esc(p.id)+'</code> <button class="secondary" id="copy-person-id">نسخ المعرّف</button></p><p><b>رقم البطاقة:</b> '+esc(p.national_id||"غير مسجل")+'</p><p><b>الهاتف:</b> '+esc(p.phone||"غير مسجل")+'</p><p><b>تاريخ إنشاء الحساب:</b> '+new Date(p.created_at).toLocaleString("ar-EG")+'</p><p><b>حالة الملف:</b> '+((p.avatar_path&&(p.full_name||"").trim().split(/\s+/).length>=3&&(p.role!=="distributor"||/^\d{14}$/.test(p.national_id||"")) )?"مكتمل":"غير مكتمل")+'</p></section>';$("copy-person-id").onclick=()=>navigator.clipboard?.writeText(p.id).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز"));});};
-    const renderList=(term="",role="all")=>{const filtered=prepared.filter(p=>(role==="all"||p.role===role)&&[p.full_name,p.national_id,p.id,p.phone].some(v=>String(v||"").toLowerCase().includes(term.toLowerCase())));$("people-list").innerHTML=filtered.map(card).join("")||'<div class="panel-card empty">لا توجد نتائج مطابقة.</div>';bindDetails();$("people-list").querySelectorAll("[data-copy-person]").forEach(btn=>btn.onclick=()=>navigator.clipboard?.writeText(btn.dataset.copyPerson).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز")));};
+    const bindDetails=()=>{$("people-list").querySelectorAll("[data-person]").forEach(btn=>btn.onclick=()=>{const p=prepared.find(x=>x.id===btn.dataset.person);$("person-details").innerHTML='<section class="panel-card person-details">'+(p.avatarUrl?'<img class="profile-photo" src="'+p.avatarUrl+'" alt="الصورة الشخصية">':'<div class="profile-photo profile-photo-empty">👤</div>')+'<h3>'+esc(p.full_name||"بدون اسم")+'</h3><p><b>نوع الحساب:</b> '+(p.role==="admin"?"أدمن":"موزع")+'</p><p><b>معرّف الحساب الكامل:</b> <code>'+esc(p.id)+'</code> <button class="secondary" id="copy-person-id">نسخ المعرّف</button></p><p><b>الاسم الثلاثي في البطاقة:</b> '+esc(p.legal_full_name||"غير مسجل")+'</p><p><b>رقم البطاقة:</b> '+esc(p.national_id||"غير مسجل")+'</p><p><b>الهاتف:</b> '+esc(p.phone||"غير مسجل")+'</p><p><b>تاريخ إنشاء الحساب:</b> '+new Date(p.created_at).toLocaleString("ar-EG")+'</p><p><b>حالة الملف:</b> '+((p.avatar_path&&(p.full_name||"").trim()&&(p.role!=="distributor"||/^\d{14}$/.test(p.national_id||"")) )?"مكتمل":"غير مكتمل")+'</p></section>';$("copy-person-id").onclick=()=>navigator.clipboard?.writeText(p.id).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز"));});};
+    const renderList=(term="",role="all")=>{const filtered=prepared.filter(p=>(role==="all"||p.role===role)&&[p.full_name,p.legal_full_name,p.national_id,p.id,p.phone].some(v=>String(v||"").toLowerCase().includes(term.toLowerCase())));$("people-list").innerHTML=filtered.map(card).join("")||'<div class="panel-card empty">لا توجد نتائج مطابقة.</div>';bindDetails();$("people-list").querySelectorAll("[data-copy-person]").forEach(btn=>btn.onclick=()=>navigator.clipboard?.writeText(btn.dataset.copyPerson).then(()=>toast("تم نسخ معرّف الحساب")).catch(()=>toast("تعذر النسخ من هذا الجهاز")));};
     setContent(section("دليل الأفراد","")+'<div class="panel-card"><div class="form-grid"><label class="field">بحث بالاسم أو البطاقة أو المعرّف أو الهاتف<input id="people-search" type="search" placeholder="اكتب للبحث..."></label><label class="field">نوع الحساب<select id="people-role"><option value="all">كل الحسابات</option><option value="admin">الأدمنز</option><option value="distributor">الموزعون</option></select></label></div><p class="hint">إجمالي الحسابات: '+prepared.length+'</p></div><div id="people-list" class="people-list"></div><div id="person-details"></div>');
     const update=()=>renderList($("people-search").value,$("people-role").value);$("people-search").oninput=update;$("people-role").onchange=update;update();
   }
@@ -445,7 +446,7 @@
     const photo=avatarUrl?'<img class="profile-photo" src="'+avatarUrl+'" alt="الصورة الشخصية">':'<div class="profile-photo profile-photo-empty">👤</div>';
     const required=profile.role==="distributor";
     setContent(section("الملف الشخصي","")+
-      (!profileComplete()?'<div class="panel-card profile-required-notice"><strong>لازم تكمل ملفك الشخصي قبل استخدام باقي أقسام التطبيق.</strong><p class="hint">مطلوب صورة شخصية واسم ثلاثي. رقم البطاقة مطلوب للموزّع فقط، واختياري للأدمن.</p></div>':'')+
+      (!profileComplete()?'<div class="panel-card profile-required-notice"><strong>لازم تكمل ملفك الشخصي قبل استخدام باقي أقسام التطبيق.</strong><p class="hint">مطلوب اسم حساب وصورة شخصية. رقم البطاقة مطلوب للموزّع فقط، والاسم الثلاثي في البطاقة يُحفظ في خانة منفصلة.</p></div>':'')+
       '<div class="profile-grid">'+
         '<section class="panel-card profile-avatar-card"><h3>الصورة الشخصية</h3>'+photo+
           '<p class="hint">الصيغ المدعومة JPG وPNG وWebP، بحد أقصى 3 ميجابايت.</p>'+
@@ -455,9 +456,9 @@
         '</section>'+
         '<section class="panel-card"><h3>البيانات الشخصية</h3>'+
           formPanel("profile-details-form","تعديل بيانات الحساب",
-            field("الاسم الثلاثي","full_name","text",'required maxlength="120" autocomplete="name"')+
+            field("اسم الحساب (الاسم الظاهر)","full_name","text",'required maxlength="120" autocomplete="name"')+field("الاسم الثلاثي كما في البطاقة","legal_full_name","text",'maxlength="160" autocomplete="off" '+(required?"required":""))+
             field("رقم البطاقة الشخصية"+(required?" (إجباري)":" (اختياري)"),"national_id","text",'inputmode="numeric" maxlength="14" minlength="14" pattern="[0-9]{14}" autocomplete="off" '+(required?"required":""))+
-            '<p class="hint">'+(required?"الموزع لازم يسجل الاسم الثلاثي ورقم بطاقة مكوّن من 14 رقمًا.":"يمكنك إضافة رقم البطاقة اختياريًا.")+'</p>'
+            '<p class="hint">'+(required?"اسم الحساب يظهر في التطبيق، والاسم الثلاثي يُسجل كما في البطاقة، ورقم البطاقة 14 رقمًا.":"يمكنك إضافة رقم البطاقة والاسم الرسمي اختياريًا.")+'</p>'
           )+
         '</section>'+
         '<section class="panel-card profile-password-card"><h3>تغيير كلمة المرور</h3>'+
@@ -471,20 +472,23 @@
       '</div>');
     const details=$("profile-details-form");
     details.elements.full_name.value=profile.full_name||"";
+    details.elements.legal_full_name.value=profile.legal_full_name||"";
     details.elements.national_id.value=profile.national_id||"";
     details.onsubmit=async e=>{
       e.preventDefault();
       const data=new FormData(details);
       const fullName=String(data.get("full_name")||"").trim();
+      const legalFullName=String(data.get("legal_full_name")||"").trim();
       const nationalId=String(data.get("national_id")||"").trim();
-      if(fullName.split(/\s+/).filter(Boolean).length<3)return toast("اكتب الاسم الثلاثي كاملًا");
+      if(!fullName)return toast("اكتب اسم الحساب");
+      if(required&&!legalFullName)return toast("اكتب الاسم الثلاثي كما في البطاقة");
       if(required && !/^\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
       if(nationalId && !/^\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
       const btn=details.querySelector('button[type="submit"],button:not([type])');if(btn)btn.disabled=true;
       try{
-        const {error}=await sb.rpc("update_my_profile",{p_full_name:fullName,p_national_id:nationalId||null});
+        const {error}=await sb.rpc("update_my_profile",{p_full_name:fullName,p_national_id:nationalId||null,p_legal_full_name:legalFullName||null});
         if(error)throw error;
-        profile.full_name=fullName;profile.national_id=nationalId||null;
+        profile.full_name=fullName;profile.legal_full_name=legalFullName||null;profile.national_id=nationalId||null;
         if(distributor)distributor.name=fullName;
         $("welcome-title").textContent="أهلاً "+fullName;
         await refreshUserArea();
