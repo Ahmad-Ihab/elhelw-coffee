@@ -501,6 +501,7 @@
           '<button id="upload-avatar" class="primary" type="button">رفع / تغيير الصورة</button>'+
           ''+
         '</section>'+
+        '<section class="panel-card profile-email-card"><h3>البريد الإلكتروني</h3><p id="profile-email-value" dir="ltr" style="overflow-wrap:anywhere">'+esc(sessionUser.email||"غير متاح")+'</p><button id="copy-profile-email" class="secondary" type="button" '+(sessionUser.email?"":"disabled")+'>نسخ الإيميل</button><p class="hint">هذا هو البريد الإلكتروني المرتبط بحساب تسجيل الدخول.</p></section>'+
         '<section class="panel-card"><h3>البيانات الشخصية</h3>'+
           formPanel("profile-details-form","تعديل بيانات الحساب",
             field("الاسم الثنائي (اسم الحساب الظاهر في التطبيق)","full_name","text",'required maxlength="120" autocomplete="name" placeholder="مثال: أحمد إيهاب"')+field("الاسم الثلاثي كما في البطاقة (يظهر للأدمن في دليل الأفراد فقط)","legal_full_name","text",'maxlength="160" autocomplete="off" placeholder="كما هو مكتوب في البطاقة" '+(required?"required":""))+
@@ -518,6 +519,13 @@
           '<p class="hint">سيتم التحقق من كلمة المرور الحالية قبل حفظ الجديدة.</p>'+
         '</section>'+
       '</div>');
+    const copyEmailButton=$("copy-profile-email");
+    if(copyEmailButton)copyEmailButton.onclick=async()=>{
+      const email=sessionUser.email||"";
+      if(!email)return toast("لا يوجد بريد إلكتروني مسجل لهذا الحساب");
+      try{await navigator.clipboard.writeText(email);toast("تم نسخ البريد الإلكتروني");}
+      catch(error){toast("تعذر النسخ من هذا الجهاز");}
+    };
     const details=$("profile-details-form");
     details.elements.full_name.value=profile.full_name||"";
     details.elements.legal_full_name.value=profile.legal_full_name||"";
