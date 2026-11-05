@@ -5,8 +5,8 @@
     cfg.SUPABASE_PUBLISHABLE_KEY && !cfg.SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE");
   const $ = (id) => document.getElementById(id);
   let sb, sessionUser, profile, distributor, activeTab = "dashboard";
-  const adminTabs = [["dashboard","الرئيسية"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["adminTools","أدوات الإدارة"]];
-  const distTabs = [["dashboard","الرئيسية"],["inventory","مخزوني"],["cafes","الكافيهات"],["orders","الطلبيات"],["samples","العينات"],["finance","حساباتي"],["returns","المرتجعات"]];
+  const adminTabs = [["dashboard","الرئيسية"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["adminTools","أدوات الإدارة"],["profile","ملفي الشخصي"]];
+  const distTabs = [["dashboard","الرئيسية"],["inventory","مخزوني"],["cafes","الكافيهات"],["orders","الطلبيات"],["samples","العينات"],["finance","حساباتي"],["returns","المرتجعات"],["profile","ملفي الشخصي"]];
   const money = n => new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:2}).format(Number(n||0));
   const qty = n => `${Number(n||0).toLocaleString("en-US",{maximumFractionDigits:3})}`;
   const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -25,6 +25,8 @@
   function selectField(label,name,options){return `<label class="field">${label}<select name="${name}" required><option value="">اختر</option>${options.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</select></label>`}
   function formPanel(id,title,fields,submitLabel="حفظ"){return `<form id="${id}" class="form-panel"><h3>${title}</h3><div class="form-grid">${fields}</div><div class="form-actions"><button class="primary">${submitLabel}</button><button type="button" class="secondary" data-cancel>إلغاء</button></div></form>`}
   function showForm(html){$("content").insertAdjacentHTML("afterbegin",html);$("content").querySelector("[data-cancel]")?.addEventListener("click",e=>e.target.closest("form").remove())}
+  async function signedAvatarUrl(path){if(!path)return "";const {data,error}=await sb.storage.from("profile-avatars").createSignedUrl(path,3600);if(error)throw error;return data?.signedUrl||"";}
+  async function refreshUserArea(){const url=await signedAvatarUrl(profile.avatar_path).catch(()=> "");const photo=url?`<img class="user-avatar" src="${url}" alt="الصورة الشخصية">`:"";$("user-area").innerHTML=`${photo}<span>${esc(profile.full_name)} · ${profile.role==="admin"?"إدارة":"موزع"}</span><button id="logout" class="secondary">خروج</button>`;$("logout").onclick=()=>sb.auth.signOut();}
   async function boot(){
     if(!configured){$("setup-warning").classList.remove("hidden");return}
     sb=window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_PUBLISHABLE_KEY);
@@ -41,8 +43,8 @@
       if(de)throw de;distributor=d;
     }
     $("auth-view").classList.add("hidden");$("workspace").classList.remove("hidden");
-    $("user-area").innerHTML=`<span>${esc(profile.full_name)} · ${profile.role==="admin"?"إدارة":"موزع"}</span><button id="logout" class="secondary">خروج</button>`;
-    $("logout").onclick=()=>sb.auth.signOut();
+    if(profile.role==="distributor" && (profile.full_name.trim().split(/\\s+/).filter(Boolean).length<3 || !/^\\d{14}$/.test(profile.national_id||"")))activeTab="profile";
+    await refreshUserArea();
     $("role-label").textContent=profile.role==="admin"?"ADMIN WORKSPACE":"DISTRIBUTOR WORKSPACE";
     $("welcome-title").textContent=`أهلاً ${profile.full_name}`;
     $("welcome-subtitle").textContent=profile.role==="admin"?"إدارة شبكة الموزعين والمبيعات والمخزون.":"متابعة مخزونك وكافيهاتك وطلبياتك.";
@@ -68,6 +70,7 @@
       if(activeTab==="returns")return returnsPage();
       if(activeTab==="productionCalculator")return productionCalculator();
       if(activeTab==="adminTools")return adminTools();
+      if(activeTab==="profile")return profilePage();
     }catch(e){fail(e);setContent(`<div class="panel-card error">${esc(e.message)}</div>`)}
   }
   async function productionCalculator(){
@@ -407,6 +410,114 @@
       $("save-remit").onclick=async()=>{const f=new FormData($("remit-form"));try{await rpc("record_distributor_remittance",{p_distributor_id:null,p_amount:Number(f.get("amount")),p_payment_method:f.get("payment_method"),p_reference:f.get("reference")||null,p_notes:null});toast("تم تسجيل التوريد");render()}catch(x){fail(x)}};
     }
   }
+
+  async function profilePage(){
+    const avatarUrl=await signedAvatarUrl(profile.avatar_path).catch(()=> "");
+    const photo=avatarUrl?'<img class="profile-photo" src="'+avatarUrl+'" alt="الصورة الشخصية">':'<div class="profile-photo profile-photo-empty">👤</div>';
+    const required=profile.role==="distributor";
+    setContent(section("الملف الشخصي","")+
+      '<div class="profile-grid">'+
+        '<section class="panel-card profile-avatar-card"><h3>الصورة الشخصية</h3>'+photo+
+          '<p class="hint">الصيغ المدعومة JPG وPNG وWebP، بحد أقصى 3 ميجابايت.</p>'+
+          '<input id="avatar-file" type="file" accept="image/jpeg,image/png,image/webp">'+
+          '<button id="upload-avatar" class="primary" type="button">رفع / تغيير الصورة</button>'+
+          (profile.avatar_path?'<button id="remove-avatar" class="secondary" type="button">إزالة الصورة</button>':'')+
+        '</section>'+
+        '<section class="panel-card"><h3>البيانات الشخصية</h3>'+
+          formPanel("profile-details-form","تعديل بيانات الحساب",
+            field("الاسم"+(required?" الثلاثي":" الكامل"),"full_name","text",'required maxlength="120" autocomplete="name"')+
+            field("رقم البطاقة الشخصية"+(required?" (إجباري)":" (اختياري)"),"national_id","text",'inputmode="numeric" maxlength="14" minlength="14" pattern="[0-9]{14}" autocomplete="off" '+(required?"required":""))+
+            '<p class="hint">'+(required?"الموزع لازم يسجل الاسم الثلاثي ورقم بطاقة مكوّن من 14 رقمًا.":"يمكنك إضافة رقم البطاقة اختياريًا.")+'</p>'
+          )+
+        '</section>'+
+        '<section class="panel-card profile-password-card"><h3>تغيير كلمة المرور</h3>'+
+          formPanel("profile-password-form","تحديث كلمة مرور الحساب",
+            field("كلمة المرور الحالية","current_password","password",'required autocomplete="current-password"')+
+            field("كلمة المرور الجديدة","new_password","password",'required minlength="8" autocomplete="new-password"')+
+            field("تأكيد كلمة المرور الجديدة","confirm_password","password",'required minlength="8" autocomplete="new-password"')
+          ,"تغيير كلمة المرور")+
+          '<p class="hint">سيتم التحقق من كلمة المرور الحالية قبل حفظ الجديدة.</p>'+
+        '</section>'+
+      '</div>');
+    const details=$("profile-details-form");
+    details.elements.full_name.value=profile.full_name||"";
+    details.elements.national_id.value=profile.national_id||"";
+    details.onsubmit=async e=>{
+      e.preventDefault();
+      const data=new FormData(details);
+      const fullName=String(data.get("full_name")||"").trim();
+      const nationalId=String(data.get("national_id")||"").trim();
+      if(required && fullName.split(/\\s+/).filter(Boolean).length<3)return toast("اكتب الاسم الثلاثي كاملًا");
+      if(required && !/^\\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
+      if(nationalId && !/^\\d{14}$/.test(nationalId))return toast("رقم البطاقة يجب أن يتكون من 14 رقمًا");
+      const btn=details.querySelector('button[type="submit"],button:not([type])');if(btn)btn.disabled=true;
+      try{
+        const {error}=await sb.rpc("update_my_profile",{p_full_name:fullName,p_national_id:nationalId||null});
+        if(error)throw error;
+        profile.full_name=fullName;profile.national_id=nationalId||null;
+        if(distributor)distributor.name=fullName;
+        $("welcome-title").textContent="أهلاً "+fullName;
+        await refreshUserArea();
+        toast("تم حفظ بيانات الملف الشخصي");
+        await render();
+      }catch(error){if(btn)btn.disabled=false;fail(error)}
+    };
+    const passwordForm=$("profile-password-form");
+    passwordForm.onsubmit=async e=>{
+      e.preventDefault();
+      const data=new FormData(passwordForm);
+      const current=String(data.get("current_password")||"");
+      const next=String(data.get("new_password")||"");
+      const confirmPassword=String(data.get("confirm_password")||"");
+      if(next.length<8)return toast("كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف");
+      if(next!==confirmPassword)return toast("تأكيد كلمة المرور غير مطابق");
+      if(next===current)return toast("اختر كلمة مرور مختلفة عن الحالية");
+      const btn=passwordForm.querySelector('button[type="submit"],button:not([type])');if(btn)btn.disabled=true;
+      try{
+        const {error:verifyError}=await sb.auth.signInWithPassword({email:sessionUser.email,password:current});
+        if(verifyError)throw new Error("كلمة المرور الحالية غير صحيحة");
+        const {error:updateError}=await sb.auth.updateUser({password:next});
+        if(updateError)throw updateError;
+        passwordForm.reset();
+        toast("تم تغيير كلمة المرور بنجاح");
+      }catch(error){fail(error)}
+      finally{if(btn)btn.disabled=false}
+    };
+    $("upload-avatar").onclick=async()=>{
+      const file=$("avatar-file").files?.[0];
+      if(!file)return toast("اختر صورة أولاً");
+      const allowed=["image/jpeg","image/png","image/webp"];
+      if(!allowed.includes(file.type))return toast("اختر صورة JPG أو PNG أو WebP");
+      if(file.size>3*1024*1024)return toast("حجم الصورة يجب ألا يتجاوز 3 ميجابايت");
+      const ext={"image/jpeg":"jpg","image/png":"png","image/webp":"webp"}[file.type];
+      const path=sessionUser.id+"/"+Date.now()+"."+ext;
+      const button=$("upload-avatar");button.disabled=true;
+      try{
+        const {error:uploadError}=await sb.storage.from("profile-avatars").upload(path,file,{cacheControl:"3600",upsert:false,contentType:file.type});
+        if(uploadError)throw uploadError;
+        const oldPath=profile.avatar_path;
+        const {error:updateError}=await sb.from("profiles").update({avatar_path:path}).eq("id",sessionUser.id);
+        if(updateError){await sb.storage.from("profile-avatars").remove([path]);throw updateError}
+        profile.avatar_path=path;
+        if(oldPath)await sb.storage.from("profile-avatars").remove([oldPath]);
+        await refreshUserArea();
+        toast("تم تحديث الصورة الشخصية");
+        await render();
+      }catch(error){button.disabled=false;fail(error)}
+    };
+    if($("remove-avatar"))$("remove-avatar").onclick=async()=>{
+      if(!confirm("هل تريد إزالة الصورة الشخصية؟"))return;
+      try{
+        const oldPath=profile.avatar_path;
+        const {error}=await sb.from("profiles").update({avatar_path:null}).eq("id",sessionUser.id);
+        if(error)throw error;
+        profile.avatar_path=null;
+        if(oldPath)await sb.storage.from("profile-avatars").remove([oldPath]);
+        await refreshUserArea();toast("تمت إزالة الصورة الشخصية");await render();
+      }catch(error){fail(error)}
+    };
+  }
+
   async function checkForAppUpdate(){
     const nativeUpdater = window.Capacitor?.Plugins?.AppUpdater;
     if(!nativeUpdater || window.__ELHELW_UPDATE_CHECKED)return;
