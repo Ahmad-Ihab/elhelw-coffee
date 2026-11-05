@@ -1,4 +1,4 @@
-const CACHE="elhelw-coffee-v23";
+const CACHE="elhelw-coffee-v24";
 const CORE=["./","./index.html","./styles.css","./app.js","./production-calculator.css","./production-calculator.js","./production-calculator/index.html","./config.js","./manifest.webmanifest","./assets/pwa-icon.svg","./assets/icon-192.png","./assets/brand-logo.svg"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE))));
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
