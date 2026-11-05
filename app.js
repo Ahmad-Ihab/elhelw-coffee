@@ -400,6 +400,55 @@
       $("save-remit").onclick=async()=>{const f=new FormData($("remit-form"));try{await rpc("record_distributor_remittance",{p_distributor_id:null,p_amount:Number(f.get("amount")),p_payment_method:f.get("payment_method"),p_reference:f.get("reference")||null,p_notes:null});toast("تم تسجيل التوريد");render()}catch(x){fail(x)}};
     }
   }
+  async function checkForAppUpdate(){
+    const nativeUpdater = window.Capacitor?.Plugins?.AppUpdater;
+    if(!nativeUpdater || window.__ELHELW_UPDATE_CHECKED)return;
+    window.__ELHELW_UPDATE_CHECKED=true;
+    try{
+      const current=await nativeUpdater.getAppInfo();
+      const response=await fetch("https://api.github.com/repos/Ahmad-Ihab/elhelw-coffee/releases/latest",{cache:"no-store",headers:{Accept:"application/vnd.github+json"}});
+      if(!response.ok)throw new Error("تعذر التحقق من وجود تحديث.");
+      const release=await response.json();
+      const match=String(release.body||"").match(/versionCode\\s*:\\s*(\\d+)/i);
+      const latestCode=match?Number(match[1]):0;
+      const apk=(release.assets||[]).find(a=>/\\.apk$/i.test(a.name));
+      if(!apk||!latestCode||latestCode<=Number(current.versionCode))return;
+      const version=String(release.tag_name||"").replace(/^v/i,"");
+      if(!confirm("يتوفر تحديث جديد لتطبيق Elhelw Distribution\\nالإصدار الحالي: "+current.versionName+"\\nالإصدار الجديد: "+version+"\\n\\nهل تريد تنزيل التحديث الآن؟"))return;
+      toast("جارٍ تنزيل التحديث...");
+      await nativeUpdater.downloadUpdate({url:apk.browser_download_url,filename:"elhelw-distribution-"+version+".apk"});
+      let status="running";
+      const started=Date.now();
+      while(status==="running"||status==="paused"){
+        await new Promise(resolve=>setTimeout(resolve,1500));
+        if(Date.now()-started>15*60*1000)throw new Error("استغرق التنزيل وقتاً طويلاً. يمكنك متابعة التنزيل من إشعارات الهاتف.");
+        const state=await nativeUpdater.getDownloadStatus();
+        status=state.status;
+        if(status==="failed")throw new Error("فشل تنزيل التحديث. كود الخطأ: "+state.reason);
+      }
+      if(status!=="success")return;
+      toast("اكتمل تنزيل التحديث.");
+      if(confirm("تم تنزيل الإصدار "+version+" بنجاح. هل تريد تثبيته الآن؟")){
+        const result=await nativeUpdater.installUpdate();
+        if(result.permissionRequired){
+          window.__ELHELW_INSTALL_PERMISSION_PENDING=true;
+          alert("اسمح للتطبيق بتثبيت التطبيقات من هذا المصدر في شاشة الإعدادات. عند الرجوع للتطبيق سيبدأ التثبيت.");
+        }
+      }
+    }catch(error){console.warn("App update check:",error);if(error?.message)toast(error.message)}
+  }
+  document.addEventListener("visibilitychange",async()=>{
+    if(document.visibilityState!=="visible"||!window.__ELHELW_INSTALL_PERMISSION_PENDING)return;
+    window.__ELHELW_INSTALL_PERMISSION_PENDING=false;
+    try{await nativeUpdaterInstallPending()}catch(error){console.warn(error);fail(error)}
+  });
+  async function nativeUpdaterInstallPending(){
+    const updater=window.Capacitor?.Plugins?.AppUpdater;
+    if(!updater)return;
+    const result=await updater.installUpdate();
+    if(result.permissionRequired)window.__ELHELW_INSTALL_PERMISSION_PENDING=true;
+  }
+  checkForAppUpdate();
   $("login-form").onsubmit=async e=>{e.preventDefault();$("login-error").textContent="";let {error}=await sb.auth.signInWithPassword({email:$("email").value,password:$("password").value});if(error){$("login-error").textContent=error.message;return}location.reload()};
   boot().catch(fail);
 })();
