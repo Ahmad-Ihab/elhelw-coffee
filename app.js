@@ -456,9 +456,9 @@
         '</section>'+
         '<section class="panel-card"><h3>البيانات الشخصية</h3>'+
           formPanel("profile-details-form","تعديل بيانات الحساب",
-            field("اسم الحساب (الاسم الظاهر)","full_name","text",'required maxlength="120" autocomplete="name"')+field("الاسم الثلاثي كما في البطاقة","legal_full_name","text",'maxlength="160" autocomplete="off" '+(required?"required":""))+
+            field("الاسم الثنائي (اسم الحساب الظاهر في التطبيق)","full_name","text",'required maxlength="120" autocomplete="name" placeholder="مثال: أحمد إيهاب"')+field("الاسم الثلاثي كما في البطاقة (يظهر للأدمن في دليل الأفراد فقط)","legal_full_name","text",'maxlength="160" autocomplete="off" placeholder="كما هو مكتوب في البطاقة" '+(required?"required":""))+
             field("رقم البطاقة الشخصية"+(required?" (إجباري)":" (اختياري)"),"national_id","text",'inputmode="numeric" maxlength="14" minlength="14" pattern="[0-9]{14}" autocomplete="off" '+(required?"required":""))+
-            '<p class="hint">'+(required?"اسم الحساب يظهر في التطبيق، والاسم الثلاثي يُسجل كما في البطاقة، ورقم البطاقة 14 رقمًا.":"يمكنك إضافة رقم البطاقة والاسم الرسمي اختياريًا.")+'</p>'
+            '<p class="hint">'+(required?"الاسم الثنائي هو اسم الحساب الظاهر أعلى التطبيق وفي دليل الأفراد. الاسم الثلاثي يُحفظ منفصلًا ويظهر للأدمن فقط في بطاقة الشخص داخل دليل الأفراد. رقم البطاقة 14 رقمًا.":"الاسم الثنائي هو اسم الحساب الظاهر في التطبيق. الاسم الثلاثي يُحفظ منفصلًا ويظهر للأدمن فقط في بطاقة الشخص داخل دليل الأفراد.")+'</p>'
           )+
         '</section>'+
         '<section class="panel-card profile-password-card"><h3>تغيير كلمة المرور</h3>'+
