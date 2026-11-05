@@ -23,6 +23,11 @@
             .order("created_at", { ascending: false }).limit(100);
           if (error) throw error;
           send({ type: "elhelw-pc-history", rows: data || [] });
+        } else if (message.type === "elhelw-pc-print") {
+          const nativePdf = window.Capacitor?.Plugins?.InvoicePdf;
+          if (!nativePdf?.print) throw new Error("مكوّن الطباعة الأصلي غير متاح. حدّث التطبيق إلى أحدث إصدار.");
+          await nativePdf.print({ html: String(message.html || ""), filename: String(message.filename || "ELHELW-PRODUCTION.pdf") });
+          send({ type: "elhelw-pc-printed" });
         } else if (message.type === "elhelw-pc-save") {
           const { error } = await supabase.from("production_calculations").insert({
             created_by: userId,
