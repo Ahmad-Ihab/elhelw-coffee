@@ -16,7 +16,9 @@ on:
     paths:
       - "app.js"
       - "index.html"
-      - "styles.css"\n      - "production-calculator.js"\n      - "production-calculator.css"
+      - "styles.css"
+      - "production-calculator.js"
+      - "production-calculator.css"
       - "config.js"
       - "assets/**"
       - "package.json"
