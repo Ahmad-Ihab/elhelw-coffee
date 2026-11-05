@@ -4,7 +4,7 @@ const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const out = path.join(root, "www");
-const files = ["index.html", "app.js", "styles.css", "config.js"];
+const files = ["index.html", "app.js", "styles.css", "config.js", "production-calculator.js", "production-calculator.css", "sw.js", "manifest.webmanifest"];
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
@@ -12,6 +12,10 @@ fs.mkdirSync(out, { recursive: true });
 for (const file of files) {
   fs.copyFileSync(path.join(root, file), path.join(out, file));
 }
+
+const calculatorSource = path.join(root, "production-calculator");
+const calculatorTarget = path.join(out, "production-calculator");
+fs.cpSync(calculatorSource, calculatorTarget, { recursive: true });
 
 const assetsSource = path.join(root, "assets");
 const assetsTarget = path.join(out, "assets");
@@ -29,4 +33,4 @@ execFileSync("npx", [
   "--outfile=www/pdf-plugins.js"
 ], { cwd: root, stdio: "inherit" });
 
-console.log("Web assets and local Capacitor PDF plugins prepared in www/");
+console.log("Web assets, bundled production calculator, service worker, and local Capacitor PDF plugins prepared in www/");
