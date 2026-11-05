@@ -325,7 +325,7 @@
       let host;
       try{
         if(window.Capacitor?.isNativePlatform?.()){
-          const nativePdf=window.Capacitor?.Plugins?.InvoicePdf;
+          const nativePdf=window.APP_INVOICE_PDF||window.Capacitor?.Plugins?.InvoicePdf;
           if(!nativePdf?.print)throw new Error("مكوّن الطباعة الأصلي غير متاح. أعد تثبيت النسخة الأحدث من التطبيق.");
           await nativePdf.print({html,filename});
           toast("تم فتح نافذة طباعة أندرويد. اختر Save as PDF ثم احفظ الفاتورة.");
