@@ -40,7 +40,16 @@
       }
     };
     window.addEventListener("message",host.__elhelwPcHandler);
-    frame.srcdoc = ORIGINAL_CALCULATOR_HTML;
+    // Write directly into the WebView iframe for better compatibility with Android System WebView.
+    try {
+      const doc = frame.contentDocument || frame.contentWindow.document;
+      doc.open();
+      doc.write(ORIGINAL_CALCULATOR_HTML);
+      doc.close();
+    } catch (error) {
+      console.error("Elhelw production calculator frame error:", error);
+      host.innerHTML = '<div class="panel-card error">تعذر فتح حاسبة الإنتاج. أغلق التطبيق وافتحه مرة أخرى، وإذا استمرت المشكلة تواصل مع الإدارة.</div>';
+    }
   }
   window.renderElhelwProductionCalculator = render;
 })();
