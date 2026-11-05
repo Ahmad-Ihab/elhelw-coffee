@@ -5,7 +5,7 @@
     cfg.SUPABASE_PUBLISHABLE_KEY && !cfg.SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE");
   const $ = (id) => document.getElementById(id);
   let sb, sessionUser, profile, distributor, activeTab = "dashboard";
-  const adminTabs = [["dashboard","الرئيسية"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["adminTools","أدوات الإدارة"]];
+  const adminTabs = [["dashboard","الرئيسية"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["adminTools","أدوات الإدارة"]];
   const distTabs = [["dashboard","الرئيسية"],["inventory","مخزوني"],["cafes","الكافيهات"],["orders","الطلبيات"],["samples","العينات"],["finance","حساباتي"],["returns","المرتجعات"]];
   const money = n => new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:2}).format(Number(n||0));
   const qty = n => `${Number(n||0).toLocaleString("en-US",{maximumFractionDigits:3})}`;
@@ -66,8 +66,15 @@
       if(activeTab==="samples")return samples();
       if(activeTab==="finance")return finance();
       if(activeTab==="returns")return returnsPage();
+      if(activeTab==="productionCalculator")return productionCalculator();
       if(activeTab==="adminTools")return adminTools();
     }catch(e){fail(e);setContent(`<div class="panel-card error">${esc(e.message)}</div>`)}
+  }
+  async function productionCalculator(){
+    if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك باستخدام حاسبة الإنتاج.</div>');
+    setContent('<div id="production-calculator"></div>');
+    if(typeof window.renderElhelwProductionCalculator!=="function")throw new Error("ملف حاسبة الإنتاج لم يتم تحميله. حدّث التطبيق وحاول مرة أخرى.");
+    window.renderElhelwProductionCalculator(sessionUser.id);
   }
   async function adminTools(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
