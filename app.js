@@ -260,15 +260,73 @@
   }
   async function cafes(){
     const cs=await rows("cafes");
-    const body=cs.map(c=>"<tr><td>"+esc(c.name)+"</td><td>"+esc(c.contact_name||"-")+"</td><td>"+esc(c.phone||"-")+"</td><td>"+esc(c.status)+"</td><td>"+(profile.role==="admin"?"<button data-edit-cafe=\""+c.id+"\" class=\"secondary\">تعديل</button> <select data-cafe-status=\""+c.id+"\"><option value=\"prospect\">محتمل</option><option value=\"active\">نشط</option><option value=\"inactive\">أرشيف</option></select>":"")+"</td></tr>").join("");
-    setContent(section("الكافيهات",'<button id="add-cafe" class="primary">إضافة كافيه</button>')+table(["الكافيه","المسؤول","الهاتف","الحالة","إدارة"],body));
+    const mapUrl=c=>c.latitude!=null&&c.longitude!=null
+      ?"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(c.latitude+","+c.longitude)
+      :c.address?"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(c.address):"";
+    const body=cs.map(c=>"<tr><td>"+esc(c.name)+"</td><td>"+esc(c.contact_name||"-")+"</td><td>"+esc(c.phone||"-")+"</td><td>"+esc(c.address||"-")+"</td><td>"+(c.notes?'<span style="white-space:pre-wrap">'+esc(c.notes)+'</span>':"-")+"</td><td>"+(mapUrl(c)?'<a class="secondary" href="'+mapUrl(c)+'" target="_blank" rel="noopener">فتح الخريطة</a>':"-")+"</td><td>"+esc(c.status)+"</td><td>"+(profile.role==="admin"?"<button data-edit-cafe=\""+c.id+"\" class=\"secondary\">تعديل</button> <select data-cafe-status=\""+c.id+"\"><option value=\"prospect\">محتمل</option><option value=\"active\">نشط</option><option value=\"inactive\">أرشيف</option></select>":"")+"</td></tr>").join("");
+    setContent(section("الكافيهات",'<button id="add-cafe" class="primary">إضافة كافيه</button>')+table(["الكافيه","المسؤول","الهاتف","العنوان","ملاحظات","الموقع","الحالة","إدارة"],body));
+
+    let leafletPromise=null;
+    const loadLeaflet=()=>{
+      if(window.L)return Promise.resolve(window.L);
+      if(leafletPromise)return leafletPromise;
+      leafletPromise=new Promise((resolve,reject)=>{
+        if(!document.querySelector('link[data-leaflet-css]')){
+          const css=document.createElement("link");css.rel="stylesheet";css.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";css.dataset.leafletCss="1";document.head.appendChild(css);
+        }
+        const script=document.createElement("script");script.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";script.onload=()=>resolve(window.L);script.onerror=()=>reject(new Error("تعذر تحميل الخريطة. تحقق من اتصال الإنترنت."));document.head.appendChild(script);
+      });
+      return leafletPromise;
+    };
+    const mapFields=(c={})=>'<div class="field" style="grid-column:1/-1"><span>تحديد موقع الكافيه على الخريطة</span><div id="cafe-location-map" style="height:260px;width:100%;border-radius:12px;z-index:1;background:#eee"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" id="cafe-use-gps" class="secondary">تحديد موقعي الحالي GPS</button><span id="cafe-map-status" class="hint">اضغط على الخريطة لوضع الدبوس أو اسحبه للموقع الصحيح.</span></div></div>'+field("خط العرض (Latitude)","latitude","number",'step="any"')+field("خط الطول (Longitude)","longitude","number",'step="any"');
+    const setupMap=async form=>{
+      const latInput=form.elements.latitude,lngInput=form.elements.longitude,status=$("cafe-map-status");
+      let map,marker;
+      const setPoint=(lat,lng,zoom=true)=>{
+        latInput.value=Number(lat).toFixed(6);lngInput.value=Number(lng).toFixed(6);
+        if(map){const point=[Number(lat),Number(lng)];if(marker)marker.setLatLng(point);else marker=window.L.marker(point,{draggable:true}).addTo(map);if(zoom)map.setView(point,16);marker.off("dragend");marker.on("dragend",()=>{const p=marker.getLatLng();setPoint(p.lat,p.lng,false)});}
+      };
+      try{
+        const L=await loadLeaflet();
+        const initial=latInput.value&&lngInput.value?[Number(latInput.value),Number(lngInput.value)]:[30.0444,31.2357];
+        map=L.map("cafe-location-map").setView(initial,latInput.value&&lngInput.value?16:11);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+        if(latInput.value&&lngInput.value)setPoint(latInput.value,lngInput.value,false);
+        map.on("click",e=>setPoint(e.latlng.lat,e.latlng.lng));
+        requestAnimationFrame(()=>map.invalidateSize());
+        if(status)status.textContent="اضغط على الخريطة لتحديد الموقع أو اسحب الدبوس لتعديله.";
+      }catch(error){if(status)status.textContent="الخريطة غير متاحة حاليًا؛ يمكنك إدخال الإحداثيات يدويًا أو استخدام GPS.";}
+      $("cafe-use-gps").onclick=()=>{
+        if(!navigator.geolocation)return toast("تحديد الموقع غير مدعوم على هذا الجهاز");
+        status.textContent="جارٍ تحديد موقعك...";
+        navigator.geolocation.getCurrentPosition(pos=>{setPoint(pos.coords.latitude,pos.coords.longitude);if(status)status.textContent="تم تحديد موقعك. حرّك الدبوس إذا لزم الأمر.";},err=>{if(status)status.textContent="تعذر تحديد الموقع. تأكد من تفعيل GPS والسماح للتطبيق بالوصول للموقع.";},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+      };
+      [latInput,lngInput].forEach(input=>input.addEventListener("change",()=>{
+        const lat=Number(latInput.value),lng=Number(lngInput.value);
+        if(latInput.value&&lngInput.value&&Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180)setPoint(lat,lng);
+      }));
+    };
+    const coordinates=form=>{const lat=String(form.elements.latitude.value||"").trim(),lng=String(form.elements.longitude.value||"").trim();if(!lat&&!lng)return {latitude:null,longitude:null};if(!lat||!lng||!Number.isFinite(Number(lat))||!Number.isFinite(Number(lng))||Number(lat)<-90||Number(lat)>90||Number(lng)<-180||Number(lng)>180)throw new Error("أدخل إحداثيات صحيحة لخط العرض والطول");return {latitude:Number(lat),longitude:Number(lng)};};
+
     if(profile.role==="admin"){
       $("content").querySelectorAll("[data-cafe-status]").forEach(sel=>{const c=cs.find(x=>x.id===sel.dataset.cafeStatus);sel.value=c?.status||"active";sel.onchange=async()=>{try{const {error}=await sb.from("cafes").update({status:sel.value,active:sel.value!=="inactive"}).eq("id",c.id);if(error)throw error;toast("تم تحديث حالة الكافيه");render()}catch(x){fail(x)}}});
-        $("content").querySelectorAll("[data-edit-cafe]").forEach(btn=>btn.insertAdjacentHTML("afterend",'<button data-delete-cafe="'+btn.dataset.editCafe+'" class="danger">حذف / أرشفة</button>'));
+      $("content").querySelectorAll("[data-edit-cafe]").forEach(btn=>btn.insertAdjacentHTML("afterend",'<button data-delete-cafe="'+btn.dataset.editCafe+'" class="danger">حذف / أرشفة</button>'));
       $("content").querySelectorAll("[data-delete-cafe]").forEach(btn=>btn.onclick=async()=>{if(!confirm("حذف الكافيه إن لم يكن له سجل معاملات، وإلا سيتم أرشفته؟"))return;try{const result=await rpc("admin_delete_cafe",{p_cafe_id:btn.dataset.deleteCafe});toast(result==="deleted"?"تم حذف الكافيه":"للكافيه سجل سابق؛ تم أرشفته للحفاظ على التاريخ");render()}catch(x){fail(x)}});
-    $("content").querySelectorAll("[data-edit-cafe]").forEach(btn=>btn.onclick=()=>{const c=cs.find(x=>x.id===btn.dataset.editCafe);showForm(formPanel("cafe-edit-form","تعديل بيانات الكافيه",field("اسم الكافيه","name")+field("اسم المسؤول","contact_name")+field("الهاتف","phone")+field("العنوان","address")+field("ملاحظات","notes")));const form=$("cafe-edit-form");for(const k of ["name","contact_name","phone","address","notes"])if(form.elements[k])form.elements[k].value=c[k]||"";form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);try{const {error}=await sb.from("cafes").update({name:d.get("name"),contact_name:d.get("contact_name"),phone:d.get("phone"),address:d.get("address"),notes:d.get("notes")}).eq("id",c.id);if(error)throw error;toast("تم تعديل بيانات الكافيه");render()}catch(x){fail(x)}}});
+      $("content").querySelectorAll("[data-edit-cafe]").forEach(btn=>btn.onclick=()=>{
+        const c=cs.find(x=>x.id===btn.dataset.editCafe);
+        showForm(formPanel("cafe-edit-form","تعديل بيانات الكافيه",field("اسم الكافيه","name")+field("اسم المسؤول","contact_name")+field("الهاتف","phone")+field("العنوان","address")+'<label class="field">ملاحظات عن الكافيه<textarea name="notes" rows="3" style="width:100%"></textarea></label>'+mapFields(c)));
+        const form=$("cafe-edit-form");
+        for(const k of ["name","contact_name","phone","address","notes","latitude","longitude"])if(form.elements[k])form.elements[k].value=c[k]??"";
+        setupMap(form);
+        form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);try{const coords=coordinates(form);const {error}=await sb.from("cafes").update({name:String(d.get("name")||"").trim(),contact_name:String(d.get("contact_name")||"").trim()||null,phone:String(d.get("phone")||"").trim()||null,address:String(d.get("address")||"").trim()||null,notes:String(d.get("notes")||"").trim()||null,...coords}).eq("id",c.id);if(error)throw error;toast("تم تعديل بيانات الكافيه");render()}catch(x){fail(x)}};
+      });
     }
-    $("add-cafe").onclick=async()=>{const ds=profile.role==="admin"?await rows("distributors"):[];showForm(formPanel("cafe-form","كافيه جديد",(profile.role==="admin"?selectField("الموزع المسؤول","distributor_id",ds.map(x=>({value:x.id,label:x.name}))):"")+field("اسم الكافيه","name")+field("اسم المسؤول","contact_name")+field("الهاتف","phone")+field("العنوان","address")));$("cafe-form").onsubmit=async e=>{e.preventDefault();let d=new FormData(e.target);try{let p={name:d.get("name"),contact_name:d.get("contact_name"),phone:d.get("phone"),address:d.get("address"),distributor_id:distributor?.id||d.get("distributor_id")};let {error}=await sb.from("cafes").insert(p);if(error)throw error;toast("تمت إضافة الكافيه");render()}catch(x){fail(x)}}};
+    $("add-cafe").onclick=async()=>{
+      const ds=profile.role==="admin"?await rows("distributors"):[];
+      showForm(formPanel("cafe-form","كافيه جديد",(profile.role==="admin"?selectField("الموزع المسؤول","distributor_id",ds.map(x=>({value:x.id,label:x.name}))):"")+field("اسم الكافيه","name")+field("اسم المسؤول","contact_name")+field("الهاتف","phone")+field("العنوان","address")+'<label class="field">ملاحظات عن الكافيه<textarea name="notes" rows="3" style="width:100%"></textarea></label>'+mapFields()));
+      const form=$("cafe-form");setupMap(form);
+      form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);try{const coords=coordinates(form);const p={name:String(d.get("name")||"").trim(),contact_name:String(d.get("contact_name")||"").trim()||null,phone:String(d.get("phone")||"").trim()||null,address:String(d.get("address")||"").trim()||null,notes:String(d.get("notes")||"").trim()||null,distributor_id:distributor?.id||d.get("distributor_id"),...coords};const {error}=await sb.from("cafes").insert(p);if(error)throw error;toast("تمت إضافة الكافيه");render()}catch(x){fail(x)}};
+    };
   }
   async function orders(){
     const [os,cs,ds]=await Promise.all([rows("orders"),rows("cafes"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
