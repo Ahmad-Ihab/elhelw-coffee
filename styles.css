@@ -23,3 +23,13 @@
 .person-summary{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.person-summary>div{flex:1;min-width:140px}.person-summary h3{margin:0 0 5px}.person-summary p{margin:3px 0}.person-details{margin-top:16px}.person-details .profile-photo{margin-bottom:12px}.person-details code{overflow-wrap:anywhere;word-break:break-all}.person-card{margin:10px 0}.people-list{display:grid;gap:10px}
 
 .person-id{overflow-wrap:anywhere;word-break:break-all}.person-id code{font-size:11px}.profile-required-notice{border-inline-start:4px solid var(--coffee2);margin-bottom:14px}
+
+
+/* Clear bag-count breakdown in distributor inventory */
+.bag-counts{width:100%;min-width:150px;max-width:260px;margin:auto}
+.bag-counts table{width:100%;min-width:0;border-collapse:collapse}
+.bag-counts th,.bag-counts td{padding:7px 10px;font-size:12px;text-align:center}
+.bag-counts th{background:#f5efe9;color:var(--coffee2);font-weight:800}
+.bag-counts td strong{display:inline-grid;place-items:center;min-width:28px;min-height:26px;padding:2px 7px;border-radius:8px;background:#eee6de;color:var(--coffee);font-size:14px}
+.bag-counts-total{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;padding:9px 11px;border-radius:10px;background:var(--coffee);color:#fff;font-size:12px;font-weight:700}
+.bag-counts-total strong{font-size:18px}
