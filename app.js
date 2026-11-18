@@ -106,9 +106,13 @@
   async function dashboard(){
     const [prods,cafes,orders,balances]=await Promise.all([
       rows("products","id,name,active"),rows("cafes","id,name,status"),
-      rows("orders","id,status,order_number"),rows("stock_balances","quantity")
+      rows("orders","id,status,order_number"),rows("stock_balances","quantity,bag_counts")
     ]);
-    const total=balances.reduce((a,b)=>a+Number(b.quantity),0);
+    const total=balances.reduce((sum,b)=>{
+      const counts=b.bag_counts||{};
+      const hasBagCounts=["50","100","200","500","1000"].some(k=>Number(counts[k]||0)>0);
+      return sum+(hasBagCounts?bagsKg(counts):Number(b.quantity||0));
+    },0);
     const pending=orders.filter(o=>!["delivered","cancelled"].includes(o.status)).length;
     setContent(`<div class="cards">
       <div class="stat"><span>الأصناف النشطة</span><strong>${prods.filter(x=>x.active).length}</strong></div>
