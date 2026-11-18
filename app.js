@@ -253,8 +253,10 @@
     const cards=bs.map(b=>{
       const counts=b.bag_counts||{};
       const totalBags=bagSizes.reduce((sum,[k])=>sum+Number(counts[k]||0),0);
+      const hasBagCounts=bagSizes.some(([k])=>Number(counts[k]||0)>0);
+      const displayedWeight=hasBagCounts?bagsKg(counts):Number(b.quantity||0);
       return `<article class="inventory-stock-card">
-        <div class="inventory-stock-heading"><div><span class="inventory-stock-kicker">الصنف</span><h3>${esc(pn[b.product_id]||"")}</h3></div><div class="inventory-stock-weight"><strong>${qty(b.quantity)}</strong><span>كجم إجمالي الوزن</span></div></div>
+        <div class="inventory-stock-heading"><div><span class="inventory-stock-kicker">الصنف</span><h3>${esc(pn[b.product_id]||"")}</h3></div><div class="inventory-stock-weight"><strong>${qty(displayedWeight)}</strong><span>كجم إجمالي الوزن</span></div></div>
         ${profile.role==="admin"?`<div class="inventory-stock-distributor">الموزع: <strong>${esc(dn[b.distributor_id]||"")}</strong></div>`:""}
         <div class="inventory-bags-title">تفاصيل الأكياس</div>
         <div class="inventory-bag-grid">${bagSizes.map(([k,label])=>`<div class="inventory-bag-cell"><span>${label}</span><strong>${Number(counts[k]||0).toLocaleString("ar-EG")}</strong><small>كيس</small></div>`).join("")}</div>
