@@ -79,7 +79,7 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/elhelw-release.keystore" >> "$GITHUB_ENV"
 
       - name: Configure release signing
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/elhelw-release.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -88,7 +88,7 @@ jobs:
         run: node scripts/configure-android-release.js
 
       - name: Build signed release APK
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
         working-directory: android
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/elhelw-release.keystore
@@ -99,12 +99,12 @@ jobs:
 
       - name: Read Android app version
         id: app_version
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
         run: |
           node -e 'const v=require("./android-version.json"); console.log("name="+v.versionName); console.log("code="+v.versionCode)' >> "$GITHUB_OUTPUT"
 
       - name: Upload signed release APK
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
         uses: actions/upload-artifact@v4
         with:
           name: elhelw-distribution-android-release
@@ -113,7 +113,7 @@ jobs:
           retention-days: 90
 
       - name: Publish Android release for in-app updates
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release')) }}
+        if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.app_version.outputs.name }}
