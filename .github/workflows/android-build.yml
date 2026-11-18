@@ -19,6 +19,7 @@ on:
       - "capacitor.config.json"
       - "manifest.webmanifest"
       - "scripts/**"
+      - "android-version.json"
       - ".github/workflows/android-build.yml"
 
 concurrency:
