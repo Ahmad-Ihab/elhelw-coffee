@@ -123,14 +123,5 @@ if (!manifest.includes("android.permission.REQUEST_INSTALL_PACKAGES")) {
   manifest = manifest.replace("<application", '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application');
 }
 fs.writeFileSync(manifestPath, manifest, "utf8");
-const gradlePath = path.resolve(__dirname, "..", "android", "app", "build.gradle");
-if (!fs.existsSync(gradlePath)) throw new Error("Android app/build.gradle was not generated.");
-let gradle = fs.readFileSync(gradlePath, "utf8");
-if (!/versionCode\s+\d+/.test(gradle) || !/versionName\s+"[^"]+"/.test(gradle)) {
-  throw new Error("Could not find versionCode/versionName in app/build.gradle.");
-}
-gradle = gradle.replace(/versionCode\s+\d+/, "versionCode 27");
-gradle = gradle.replace(/versionName\s+"[^"]+"/, 'versionName "1.2.6"');
-fs.writeFileSync(gradlePath, gradle, "utf8");
-console.log("Configured Android app version 1.2.5 (versionCode 26).");
+// Version metadata is applied by scripts/set-android-version.js in the build workflow.
 console.log("Registered native InvoicePdf plugin in " + mainPath);
