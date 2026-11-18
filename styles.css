@@ -33,3 +33,23 @@
 .bag-counts td strong{display:inline-grid;place-items:center;min-width:28px;min-height:26px;padding:2px 7px;border-radius:8px;background:#eee6de;color:var(--coffee);font-size:14px}
 .bag-counts-total{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;padding:9px 11px;border-radius:10px;background:var(--coffee);color:#fff;font-size:12px;font-weight:700}
 .bag-counts-total strong{font-size:18px}
+
+
+/* Responsive inventory cards with clearly separated bag sizes */
+.inventory-stock-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:14px;margin-top:14px}
+.inventory-stock-card{min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:17px;padding:16px;box-shadow:var(--shadow)}
+.inventory-stock-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.inventory-stock-kicker,.inventory-stock-weight span{display:block;color:var(--muted);font-size:11px}
+.inventory-stock-heading h3{margin:3px 0 0;font-size:17px}
+.inventory-stock-weight{text-align:left;white-space:nowrap}
+.inventory-stock-weight strong{display:block;color:var(--coffee);font-size:20px}
+.inventory-stock-distributor{padding:9px 0;font-size:12px;color:var(--muted)}
+.inventory-stock-distributor strong{color:var(--ink)}
+.inventory-bags-title{margin:13px 0 9px;font-size:13px;font-weight:800;color:var(--coffee2)}
+.inventory-bag-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.inventory-bag-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:0;padding:11px 5px;border:1px solid var(--line);border-radius:12px;background:#faf8f5}
+.inventory-bag-cell span{font-size:11px;color:var(--muted)}
+.inventory-bag-cell strong{font-size:21px;line-height:1.3;color:var(--coffee)}
+.inventory-bag-cell small{font-size:10px;color:var(--muted)}
+.inventory-bag-total{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding:11px 13px;border-radius:11px;background:var(--coffee);color:#fff;font-size:12px;font-weight:700}
+.inventory-bag-total strong{font-size:21px}
