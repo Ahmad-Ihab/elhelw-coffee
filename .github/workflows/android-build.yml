@@ -64,6 +64,10 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Set Android release version
+        run: |
+          node -e 'const fs=require("fs");const v=require("./android-version.json");const p="android/app/build.gradle";let s=fs.readFileSync(p,"utf8");s=s.replace(/versionCode\\s+\\d+/, "versionCode "+v.versionCode).replace(/versionName\\s+"[^"]+"/, "versionName \\""+v.versionName+"\\"");fs.writeFileSync(p,s);console.log("Android version "+v.versionName+" ("+v.versionCode+")");'
+
       - name: Generate Elhelw Android launcher icons
         run: |
           npm install --no-save sharp
