@@ -249,13 +249,19 @@
   async function inventory(){
     const [bs,ps,ds]=await Promise.all([rows("stock_balances","distributor_id,product_id,quantity,bag_counts"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
     const pn=Object.fromEntries(ps.map(p=>[p.id,p.name])),dn=Object.fromEntries(ds.map(d=>[d.id,d.name]));
-    const bagSizes=["50","100","200","500","1000"];
-    const body=bs.map(b=>{
+    const bagSizes=[["50","50 جم"],["100","100 جم"],["200","200 جم"],["500","500 جم"],["1000","1 كجم"]];
+    const cards=bs.map(b=>{
       const counts=b.bag_counts||{};
-      const totalBags=bagSizes.reduce((sum,k)=>sum+Number(counts[k]||0),0);
-      return `<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td>${bagSizes.map(k=>`<td class="inventory-bag-count">${Number(counts[k]||0).toLocaleString("ar-EG")}</td>`).join("")}<td class="inventory-bag-total">${totalBags.toLocaleString("ar-EG")}</td></tr>`;
+      const totalBags=bagSizes.reduce((sum,[k])=>sum+Number(counts[k]||0),0);
+      return `<article class="inventory-stock-card">
+        <div class="inventory-stock-heading"><div><span class="inventory-stock-kicker">الصنف</span><h3>${esc(pn[b.product_id]||"")}</h3></div><div class="inventory-stock-weight"><strong>${qty(b.quantity)}</strong><span>كجم إجمالي الوزن</span></div></div>
+        ${profile.role==="admin"?`<div class="inventory-stock-distributor">الموزع: <strong>${esc(dn[b.distributor_id]||"")}</strong></div>`:""}
+        <div class="inventory-bags-title">تفاصيل الأكياس</div>
+        <div class="inventory-bag-grid">${bagSizes.map(([k,label])=>`<div class="inventory-bag-cell"><span>${label}</span><strong>${Number(counts[k]||0).toLocaleString("ar-EG")}</strong><small>كيس</small></div>`).join("")}</div>
+        <div class="inventory-bag-total"><span>إجمالي عدد الأكياس</span><strong>${totalBags.toLocaleString("ar-EG")}</strong></div>
+      </article>`;
     }).join("");
-    setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+table(["الموزع","الصنف","إجمالي الوزن","50 جم","100 جم","200 جم","500 جم","1 كجم","إجمالي الأكياس"],body));
+    setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+`<div class="inventory-stock-list">${cards||'<div class="empty">لا توجد أرصدة مخزون حتى الآن</div>'}</div>`);
     if(profile.role==="admin")$("content").querySelector("h2")?.insertAdjacentHTML("afterend",'<button id="adjust-stock" class="secondary">تصحيح رصيد المخزون (زيادة / خصم)</button>');
     if($("adjust-stock"))$("adjust-stock").onclick=async()=>{
       const [dlist,plist]=await Promise.all([rows("distributors"),rows("products")]);
