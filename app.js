@@ -249,8 +249,13 @@
   async function inventory(){
     const [bs,ps,ds]=await Promise.all([rows("stock_balances","distributor_id,product_id,quantity,bag_counts"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
     const pn=Object.fromEntries(ps.map(p=>[p.id,p.name])),dn=Object.fromEntries(ds.map(d=>[d.id,d.name]));
-    const body=bs.map(b=>`<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td><td>${bagsTable(b.bag_counts)}</td></tr>`).join("");
-    setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+table(["الموزع","الصنف","إجمالي الوزن","توزيع الأكياس"],body));
+    const bagSizes=["50","100","200","500","1000"];
+    const body=bs.map(b=>{
+      const counts=b.bag_counts||{};
+      const totalBags=bagSizes.reduce((sum,k)=>sum+Number(counts[k]||0),0);
+      return `<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td>${bagSizes.map(k=>`<td class="inventory-bag-count">${Number(counts[k]||0).toLocaleString("ar-EG")}</td>`).join("")}<td class="inventory-bag-total">${totalBags.toLocaleString("ar-EG")}</td></tr>`;
+    }).join("");
+    setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+table(["الموزع","الصنف","إجمالي الوزن","50 جم","100 جم","200 جم","500 جم","1 كجم","إجمالي الأكياس"],body));
     if(profile.role==="admin")$("content").querySelector("h2")?.insertAdjacentHTML("afterend",'<button id="adjust-stock" class="secondary">تصحيح رصيد المخزون (زيادة / خصم)</button>');
     if($("adjust-stock"))$("adjust-stock").onclick=async()=>{
       const [dlist,plist]=await Promise.all([rows("distributors"),rows("products")]);
