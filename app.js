@@ -19,6 +19,14 @@
   const readBags = (f,p) => Object.fromEntries(["50","100","200","500","1000"].map(k=>[k,Number(f.elements[p+k].value||0)]));
   const bagsKg = b => (50*b["50"]+100*b["100"]+200*b["200"]+500*b["500"]+1000*b["1000"])/1000;
   const bagsLabel = b => b ? ["50","100","200","500","1000"].map(k=>Number(b[k]||0)?k+"جم: "+b[k]:"").filter(Boolean).join(" · ") : "تفاصيل الأكياس غير متاحة";
+  const bagsTable = b => {
+    if(!b) return '<span class="muted">تفاصيل الأكياس غير متاحة</span>';
+    const sizes=[["50","50 جم"],["100","100 جم"],["200","200 جم"],["500","500 جم"],["1000","1 كجم"]];
+    const items=sizes.map(([k,label])=>({label,count:Number(b[k]||0)})).filter(x=>x.count>0);
+    if(!items.length) return '<span class="muted">لا توجد أكياس</span>';
+    const total=items.reduce((sum,x)=>sum+x.count,0);
+    return '<div class="bag-counts"><table><thead><tr><th>وزن الكيس</th><th>العدد</th></tr></thead><tbody>'+items.map(x=>'<tr><td>'+x.label+'</td><td><strong>'+x.count+'</strong></td></tr>').join('')+'</tbody></table><div class="bag-counts-total"><span>إجمالي الأكياس</span><strong>'+total+'</strong></div></div>';
+  };
   function table(headers, body){return `<div class="table-wrap"><table><thead><tr>${headers.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body||`<tr><td colspan="${headers.length}" class="empty">لا توجد بيانات حتى الآن</td></tr>`}</tbody></table></div>`}
   function section(title,action=""){return `<div class="section-head"><h2>${title}</h2>${action}</div>`}
   function field(label,name,type="text",extra=""){return `<label class="field">${label}<input name="${name}" type="${type}" ${extra}></label>`}
@@ -241,7 +249,7 @@
   async function inventory(){
     const [bs,ps,ds]=await Promise.all([rows("stock_balances","distributor_id,product_id,quantity,bag_counts"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
     const pn=Object.fromEntries(ps.map(p=>[p.id,p.name])),dn=Object.fromEntries(ds.map(d=>[d.id,d.name]));
-    const body=bs.map(b=>`<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td><td>${esc(bagsLabel(b.bag_counts))}</td></tr>`).join("");
+    const body=bs.map(b=>`<tr><td>${esc(dn[b.distributor_id]||"")}</td><td>${esc(pn[b.product_id]||"")}</td><td>${qty(b.quantity)} كجم</td><td>${bagsTable(b.bag_counts)}</td></tr>`).join("");
     setContent(section(profile.role==="admin"?"مخزون الموزعين":"مخزوني",profile.role==="admin"?'<button id="receive-stock" class="primary">تسجيل استلام بضاعة</button>':'')+table(["الموزع","الصنف","إجمالي الوزن","توزيع الأكياس"],body));
     if(profile.role==="admin")$("content").querySelector("h2")?.insertAdjacentHTML("afterend",'<button id="adjust-stock" class="secondary">تصحيح رصيد المخزون (زيادة / خصم)</button>');
     if($("adjust-stock"))$("adjust-stock").onclick=async()=>{
