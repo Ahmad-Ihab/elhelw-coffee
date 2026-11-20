@@ -18,15 +18,16 @@
         if (message.type === "elhelw-pc-resize") {
           frame.style.height = Math.max(850, Math.min(7000, Number(message.height) || 1100)) + "px";
         } else if (message.type === "elhelw-pc-catalog") {
-          const [recipes, recipeItems, materials, prices, suppliers] = await Promise.all([
+          const [recipes, recipeItems, materials, prices, suppliers, stock] = await Promise.all([
             supabase.from("production_recipes").select("id,name,roast_loss_percent").eq("active",true).order("sort_order"),
             supabase.from("production_recipe_items").select("id,recipe_id,raw_material_id,output_kg_per_kg,apply_roast_loss"),
             supabase.from("raw_materials").select("id,name,unit").eq("active",true),
             supabase.from("supplier_material_prices").select("supplier_id,raw_material_id,unit_price"),
-            supabase.from("suppliers").select("id,name").eq("active",true)
+            supabase.from("suppliers").select("id,name").eq("active",true),
+            supabase.from("raw_material_stock_balances").select("raw_material_id,quantity_kg")
           ]);
           for (const result of [recipes,recipeItems,materials,prices,suppliers]) if(result.error) throw result.error;
-          send({type:"elhelw-pc-catalog-data",recipes:recipes.data||[],recipeItems:recipeItems.data||[],materials:materials.data||[],prices:prices.data||[],suppliers:suppliers.data||[]});
+          send({type:"elhelw-pc-catalog-data",recipes:recipes.data||[],recipeItems:recipeItems.data||[],materials:materials.data||[],prices:prices.data||[],suppliers:suppliers.data||[],stock:stock.data||[]});
         } else if (message.type === "elhelw-pc-create-purchase") {
           const groups = new Map();
           for (const line of (message.items||[])) {
