@@ -102,7 +102,7 @@ background:#2a211b;color:#fff;padding:10px 15px;border-radius:999px;font-size:12
 <div id="toast" class="toast"></div>
 
 <script>
-let recipes={}, materials=[], supplierPrices=[], suppliers=[], recipeCatalogReady=false;
+let recipes={}, materials=[], supplierPrices=[], suppliers=[], stockBalances=[], recipeCatalogReady=false;
 let lastResult=null, deferredPrompt=null;
 function q(id){return Math.max(0,parseFloat(document.getElementById("recipe_"+id)?.value)||0)}
 function fmt(x){return Math.abs(x)<1e-9?"0":Number(x).toFixed(3).replace(/\.?0+$/,"")}
@@ -114,7 +114,7 @@ function renderRecipeInputs(){
 }
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function applyCatalog(data){
-  materials=data.materials||[];supplierPrices=data.prices||[];suppliers=data.suppliers||[];
+  materials=data.materials||[];supplierPrices=data.prices||[];suppliers=data.suppliers||[];stockBalances=data.stock||[];
   recipes={};
   for(const r of data.recipes||[]){
     const items=(data.recipeItems||[]).filter(i=>i.recipe_id===r.id).map(i=>({materialId:i.raw_material_id,material:materials.find(m=>m.id===i.raw_material_id)?.name||"خامة",ratio:Number(i.output_kg_per_kg),applyRoastLoss:!!i.apply_roast_loss}));
@@ -138,14 +138,14 @@ function calculate(){
     details.push({id,name:r.name,qty,rows});
   }
   const totalOrder=Object.values(orders).reduce((a,b)=>a+b,0);
-  const requirements=Object.entries(totals).map(([materialId,x])=>({materialId,name:x.name,quantity_kg:x.quantity}));
+  const requirements=Object.entries(totals).map(([materialId,x])=>{const available=Number(stockBalances.find(b=>b.raw_material_id===materialId)?.quantity_kg||0);return {materialId,name:x.name,quantity_kg:x.quantity,available_kg:available,purchase_kg:Math.max(0,x.quantity-available)}});
   lastResult={orders,waste,totals,details,totalOrder,requirements};
   if(!totalOrder){document.getElementById("summary").innerHTML='<div class="empty">أدخل كمية واحدة على الأقل.</div>';document.getElementById("details").innerHTML='<div class="empty">ستظهر تفاصيل كل منتج هنا.</div>';return}
-  const rows=requirements.map(x=>'<tr><td><b>'+escapeHtml(x.name)+'</b></td><td class="num kg-main">'+fmt(x.quantity_kg)+' كجم<br><span class="grams">'+fmt(x.quantity_kg*1000)+' جم</span></td></tr>').join("");
+  const rows=requirements.map(x=>'<tr><td><b>'+escapeHtml(x.name)+'</b></td><td>'+fmt(x.quantity_kg)+' كجم</td><td>'+fmt(x.available_kg)+' كجم</td><td><b>'+fmt(x.purchase_kg)+' كجم</b></td></tr>').join("");
   const supplierRows=requirements.map(x=>{
     const options=supplierPrices.filter(p=>p.raw_material_id===x.materialId).map(p=>({...p,supplier:suppliers.find(s=>s.id===p.supplier_id)})).filter(p=>p.supplier).sort((a,b)=>Number(a.unit_price)-Number(b.unit_price));
     const best=options[0];
-    return '<tr><td>'+escapeHtml(x.name)+'</td><td>'+(best?escapeHtml(best.supplier.name):'لا يوجد سعر مسجل')+'</td><td>'+(best?fmt(best.unit_price)+' ج/كجم':'—')+'</td><td>'+(best?fmt(best.unit_price*x.quantity_kg)+' ج':'—')+'</td></tr>';
+    return '<tr><td>'+escapeHtml(x.name)+'</td><td>'+(best?escapeHtml(best.supplier.name):'لا يوجد سعر مسجل')+'</td><td>'+(best?fmt(best.unit_price)+' ج/كجم':'—')+'</td><td>'+(best?fmt(best.unit_price*x.purchase_kg)+' ج':'—')+'</td></tr>';
   }).join("");
   document.getElementById("summary").innerHTML='<div class="total-banner"><span>إجمالي وزن الطلبية</span><strong>'+fmt(totalOrder)+' كجم</strong></div><table><thead><tr><th>الخامة</th><th>الكمية المطلوبة</th></tr></thead><tbody>'+rows+'</tbody></table><p class="note">الهالك '+fmt(waste)+'% يطبق فقط على المكونات المحددة في إعداد كل توليفة.</p><h3 style="margin-top:18px">أرخص مورد لكل خامة</h3><table><thead><tr><th>الخامة</th><th>المورد الأرخص</th><th>سعر الكيلو</th><th>التكلفة</th></tr></thead><tbody>'+supplierRows+'</tbody></table><p class="note">المقارنة تعتمد على آخر سعر سجلته يدويًا لكل مورد.</p><button class="primary" onclick="createSupplierOrders()">إنشاء طلبيات شراء من الموردين الأرخص</button>';
   document.getElementById("details").innerHTML=details.map(d=>'<details class="details"><summary>'+escapeHtml(d.name)+' — '+fmt(d.qty)+' كجم</summary><div class="product-detail"><table><thead><tr><th>الخامة</th><th>النسبة / كجم</th><th>كمية خام البداية</th></tr></thead><tbody>'+d.rows.map(x=>'<tr><td>'+escapeHtml(x.item)+'</td><td class="num">'+fmt(x.ratio)+' كجم</td><td class="num">'+fmt(x.start)+' كجم</td></tr>').join("")+'</tbody></table></div></details>').join("");
@@ -156,8 +156,9 @@ function createSupplierOrders(){
   const items=[];
   for(const req of lastResult.requirements){
     const best=supplierPrices.filter(p=>p.raw_material_id===req.materialId&&suppliers.some(s=>s.id===p.supplier_id)).sort((a,b)=>Number(a.unit_price)-Number(b.unit_price))[0];
+    if(req.purchase_kg<=0)continue;
     if(!best)return toast("لا يوجد مورد مسجل بسعر للخامة: "+req.name);
-    items.push({raw_material_id:req.materialId,quantity_kg:req.quantity_kg,supplier_id:best.supplier_id,unit_price:Number(best.unit_price)});
+    items.push({raw_material_id:req.materialId,quantity_kg:req.purchase_kg,supplier_id:best.supplier_id,unit_price:Number(best.unit_price)});
   }
   if(!confirm("سيتم إنشاء طلبية شراء تلقائيًا من المورد الأرخص لكل خامة. قد ينتج أكثر من طلبية حسب عدد الموردين. متابعة؟"))return;
   parent.postMessage({type:"elhelw-pc-create-purchase",items},"*");
