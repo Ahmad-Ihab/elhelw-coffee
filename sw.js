@@ -1,4 +1,4 @@
-const CACHE = "elhelw-coffee-v27";
+const CACHE = "elhelw-coffee-v28";
 const CORE = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const CORE = [
   "./app.js",
   "./production-calculator.css",
   "./production-calculator.js",
+  "./procurement.js",
   "./production-calculator/index.html",
   "./config.js",
   "./manifest.webmanifest",
