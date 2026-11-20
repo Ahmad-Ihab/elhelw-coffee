@@ -5,7 +5,7 @@
     cfg.SUPABASE_PUBLISHABLE_KEY && !cfg.SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE");
   const $ = (id) => document.getElementById(id);
   let sb, sessionUser, profile, distributor, activeTab = "dashboard";
-  const adminTabs = [["dashboard","الرئيسية"],["people","دليل الأفراد"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["adminTools","أدوات الإدارة"],["profile","ملفي الشخصي"]];
+  const adminTabs = [["dashboard","الرئيسية"],["people","دليل الأفراد"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["procurement","الموردون والمشتريات"],["adminTools","أدوات الإدارة"],["profile","ملفي الشخصي"]];
   const distTabs = [["dashboard","الرئيسية"],["inventory","مخزوني"],["cafes","الكافيهات"],["orders","الطلبيات"],["samples","العينات"],["finance","حساباتي"],["returns","المرتجعات"],["profile","ملفي الشخصي"]];
   const money = n => new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:2}).format(Number(n||0));
   const qty = n => `${Number(n||0).toLocaleString("en-US",{maximumFractionDigits:3})}`;
@@ -80,6 +80,7 @@
       if(activeTab==="finance")return finance();
       if(activeTab==="returns")return returnsPage();
       if(activeTab==="productionCalculator")return productionCalculator();
+      if(activeTab==="procurement")return procurementPage();
       if(activeTab==="adminTools")return adminTools();
       if(activeTab==="profile")return profilePage();
     }catch(e){fail(e);setContent(`<div class="panel-card error">${esc(e.message)}</div>`)}
@@ -89,6 +90,12 @@
     setContent('<div id="production-calculator"></div>');
     if(typeof window.renderElhelwProductionCalculator!=="function")throw new Error("ملف حاسبة الإنتاج لم يتم تحميله. حدّث التطبيق وحاول مرة أخرى.");
     window.renderElhelwProductionCalculator(sessionUser.id,sb);
+  }
+  async function procurementPage(){
+    if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك باستخدام إدارة الموردين.</div>');
+    setContent('<div id="procurement-workspace"></div>');
+    if(typeof window.renderElhelwProcurement!=="function")throw new Error("ملف إدارة الموردين لم يتم تحميله. حدّث التطبيق وحاول مرة أخرى.");
+    await window.renderElhelwProcurement($("procurement-workspace"),sb);
   }
   async function adminTools(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
