@@ -70,12 +70,7 @@ background:#2a211b;color:#fff;padding:10px 15px;border-radius:999px;font-size:12
 <main>
 <section class="card">
   <div class="section-head"><h2>الطلبية</h2><span class="step">1</span></div>
-  <label style="display:block;font-size:13px;font-weight:700;margin:0 0 10px">اسم الطلبية / الكافيه (اختياري)<input id="orderName" type="text" maxlength="100" placeholder="مثال: طلبية كافيه ..." style="width:100%;margin-top:6px;border:1px solid var(--line);border-radius:11px;padding:10px;background:#fff"></label><div class="product-grid">
-    <div class="product"><label for="plain">سادة</label><input id="plain" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>
-    <div class="product"><label for="hawaji">محوجة</label><input id="hawaji" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>
-    <div class="product"><label for="french">فرنسية</label><input id="french" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>
-    <div class="product"><label for="hazelnut">بندق</label><input id="hazelnut" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>
-  </div>
+  <label style="display:block;font-size:13px;font-weight:700;margin:0 0 10px">اسم الطلبية / الكافيه (اختياري)<input id="orderName" type="text" maxlength="100" placeholder="مثال: طلبية كافيه ..." style="width:100%;margin-top:6px;border:1px solid var(--line);border-radius:11px;padding:10px;background:#fff"></label><div class="product-grid" id="recipeInputs"><div class="empty">جارٍ تحميل التوليفات المحفوظة...</div></div>
   <div class="waste-row">
     <div class="label">هالك التحميص للبن والحبهان</div>
     <div class="waste-control"><input id="waste" type="number" min="0" max="99.9" step="0.1" value="20" inputmode="decimal"><b>%</b></div>
@@ -107,47 +102,69 @@ background:#2a211b;color:#fff;padding:10px 15px;border-radius:999px;font-size:12
 <div id="toast" class="toast"></div>
 
 <script>
-const recipes={
-plain:{name:"سادة",items:{"بن إندونيسي":.750,"بن هندي":.125,"بن برازيلي":.125}},
-hawaji:{name:"محوجة",items:{"بن إندونيسي":.700,"بن هندي":.116,"بن برازيلي":.116,"حبهان":.045,"قرنفل":.0045,"زهر ورد":.0185}},
-french:{name:"فرنسية",items:{"بن إندونيسي":.255,"بن هندي":.0425,"بن برازيلي":.0425,"لبن بودرة":.660}},
-hazelnut:{name:"بندق",items:{"بن إندونيسي":.255,"بن هندي":.0425,"بن برازيلي":.0425,"لبن بودرة":.600,"بندق حصاة":.045,"نكهة بندق":.015}}
-};
-const roastLossItems=new Set(["بن إندونيسي","بن هندي","بن برازيلي","حبهان"]);
+let recipes={}, materials=[], supplierPrices=[], suppliers=[], recipeCatalogReady=false;
+let lastResult=null, deferredPrompt=null;
+function q(id){return Math.max(0,parseFloat(document.getElementById("recipe_"+id)?.value)||0)}
+function fmt(x){return Math.abs(x)<1e-9?"0":Number(x).toFixed(3).replace(/\.?0+$/,"")}
+function renderRecipeInputs(){
+  const el=document.getElementById("recipeInputs");
+  const active=Object.entries(recipes);
+  el.innerHTML=active.length?active.map(([id,r])=>'<div class="product"><label for="recipe_'+id+'">'+escapeHtml(r.name)+'</label><input id="recipe_'+id+'" data-recipe="'+id+'" type="number" min="0" step="0.001" inputmode="decimal" placeholder="0"><span class="unit">كجم</span></div>').join(""):'<div class="empty">لا توجد توليفات نشطة. أضف التوليفات من قسم الموردين والمشتريات.</div>';
+  el.querySelectorAll("input").forEach(x=>x.addEventListener("input",calculate));
+}
+function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function applyCatalog(data){
+  materials=data.materials||[];supplierPrices=data.prices||[];suppliers=data.suppliers||[];
+  recipes={};
+  for(const r of data.recipes||[]){
+    const items=(data.recipeItems||[]).filter(i=>i.recipe_id===r.id).map(i=>({materialId:i.raw_material_id,material:materials.find(m=>m.id===i.raw_material_id)?.name||"خامة",ratio:Number(i.output_kg_per_kg),applyRoastLoss:!!i.apply_roast_loss}));
+    recipes[r.id]={name:r.name,roastLoss:Number(r.roast_loss_percent||20),items};
+  }
+  recipeCatalogReady=true;renderRecipeInputs();calculate();
+}
 let lastResult=null, deferredPrompt=null;
 function q(id){return Math.max(0,parseFloat(document.getElementById(id).value)||0)}
 function fmt(x){return Math.abs(x)<1e-9?"0":x.toFixed(3).replace(/\.?0+$/,"")}
 function raw(output,item,waste){return roastLossItems.has(item)?output/(1-waste/100):output}
 function calculate(){
-  const orders={}; for(const k of Object.keys(recipes)){const v=q(k);if(v>0)orders[k]=v}
+  const orders={};for(const id of Object.keys(recipes)){const v=q(id);if(v>0)orders[id]=v}
   const waste=Math.min(99.9,Math.max(0,parseFloat(document.getElementById("waste").value)||0));
-  const totals={}, details=[];
-  for(const [k,qty] of Object.entries(orders)){
-    const r=recipes[k], rows=[];
-    for(const [item,ratio] of Object.entries(r.items)){
-      const output=qty*ratio, start=raw(output,item,waste);
-      totals[item]=(totals[item]||0)+start; rows.push({item,ratio,output,start});
+  const totals={},details=[];
+  for(const [id,qty] of Object.entries(orders)){
+    const r=recipes[id],rows=[];
+    for(const item of r.items){
+      const output=qty*item.ratio,start=item.applyRoastLoss?output/(1-waste/100):output;
+      const key=item.materialId;
+      if(!totals[key])totals[key]={name:item.material,quantity:0};
+      totals[key].quantity+=start;
+      rows.push({materialId:key,item:item.material,ratio:item.ratio,output,start});
     }
-    details.push({name:r.name,qty,rows});
+    details.push({id,name:r.name,qty,rows});
   }
   const totalOrder=Object.values(orders).reduce((a,b)=>a+b,0);
-  lastResult={orders,waste,totals,details,totalOrder};
-  if(!totalOrder){
-    document.getElementById("summary").innerHTML='<div class="empty">أدخل كمية واحدة على الأقل.</div>';
-    document.getElementById("details").innerHTML='<div class="empty">ستظهر تفاصيل كل منتج هنا.</div>'; return;
+  const requirements=Object.entries(totals).map(([materialId,x])=>({materialId,name:x.name,quantity_kg:x.quantity}));
+  lastResult={orders,waste,totals,details,totalOrder,requirements};
+  if(!totalOrder){document.getElementById("summary").innerHTML='<div class="empty">أدخل كمية واحدة على الأقل.</div>';document.getElementById("details").innerHTML='<div class="empty">ستظهر تفاصيل كل منتج هنا.</div>';return}
+  const rows=requirements.map(x=>'<tr><td><b>'+escapeHtml(x.name)+'</b></td><td class="num kg-main">'+fmt(x.quantity_kg)+' كجم<br><span class="grams">'+fmt(x.quantity_kg*1000)+' جم</span></td></tr>').join("");
+  const supplierRows=requirements.map(x=>{
+    const options=supplierPrices.filter(p=>p.raw_material_id===x.materialId).map(p=>({...p,supplier:suppliers.find(s=>s.id===p.supplier_id)})).filter(p=>p.supplier).sort((a,b)=>Number(a.unit_price)-Number(b.unit_price));
+    const best=options[0];
+    return '<tr><td>'+escapeHtml(x.name)+'</td><td>'+(best?escapeHtml(best.supplier.name):'لا يوجد سعر مسجل')+'</td><td>'+(best?fmt(best.unit_price)+' ج/كجم':'—')+'</td><td>'+(best?fmt(best.unit_price*x.quantity_kg)+' ج':'—')+'</td></tr>';
+  }).join("");
+  document.getElementById("summary").innerHTML='<div class="total-banner"><span>إجمالي وزن الطلبية</span><strong>'+fmt(totalOrder)+' كجم</strong></div><table><thead><tr><th>الخامة</th><th>الكمية المطلوبة</th></tr></thead><tbody>'+rows+'</tbody></table><p class="note">الهالك '+fmt(waste)+'% يطبق فقط على المكونات المحددة في إعداد كل توليفة.</p><h3 style="margin-top:18px">أرخص مورد لكل خامة</h3><table><thead><tr><th>الخامة</th><th>المورد الأرخص</th><th>سعر الكيلو</th><th>التكلفة</th></tr></thead><tbody>'+supplierRows+'</tbody></table><p class="note">المقارنة تعتمد على آخر سعر سجلته يدويًا لكل مورد.</p><button class="primary" onclick="createSupplierOrders()">إنشاء طلبيات شراء من الموردين الأرخص</button>';
+  document.getElementById("details").innerHTML=details.map(d=>'<details class="details"><summary>'+escapeHtml(d.name)+' — '+fmt(d.qty)+' كجم</summary><div class="product-detail"><table><thead><tr><th>الخامة</th><th>النسبة / كجم</th><th>كمية خام البداية</th></tr></thead><tbody>'+d.rows.map(x=>'<tr><td>'+escapeHtml(x.item)+'</td><td class="num">'+fmt(x.ratio)+' كجم</td><td class="num">'+fmt(x.start)+' كجم</td></tr>').join("")+'</tbody></table></div></details>').join("");
+  toast("تم تحديث حساب الخامات");if(typeof resize==="function")resize();
+}
+function createSupplierOrders(){
+  if(!lastResult?.requirements?.length)return toast("احسب الطلبية أولاً");
+  const items=[];
+  for(const req of lastResult.requirements){
+    const best=supplierPrices.filter(p=>p.raw_material_id===req.materialId&&suppliers.some(s=>s.id===p.supplier_id)).sort((a,b)=>Number(a.unit_price)-Number(b.unit_price))[0];
+    if(!best)return toast("لا يوجد مورد مسجل بسعر للخامة: "+req.name);
+    items.push({raw_material_id:req.materialId,quantity_kg:req.quantity_kg,supplier_id:best.supplier_id,unit_price:Number(best.unit_price)});
   }
-  const rows=Object.entries(totals).map(([item,v])=>`<tr><td><b>${item}</b></td><td class="num kg-main">${fmt(v)} كجم<br><span class="grams">${fmt(v*1000)} جم</span></td></tr>`).join("");
-  document.getElementById("summary").innerHTML=`
-    <div class="total-banner"><span>إجمالي وزن الطلبية</span><strong>${fmt(totalOrder)} كجم</strong></div>
-    <table><thead><tr><th>الخامة</th><th>الكمية المطلوبة</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="note">الهالك ${fmt(waste)}% مطبق على البن الإندونيسي والهندي والبرازيلي والحبهان فقط.</p>`;
-  document.getElementById("details").innerHTML=details.map(d=>`
-    <details class="details"><summary>${d.name} — ${fmt(d.qty)} كجم</summary>
-      <div class="product-detail"><table><thead><tr><th>الخامة</th><th>الوصفة/كجم</th><th>خام البداية</th></tr></thead><tbody>
-      ${d.rows.map(x=>`<tr><td>${x.item}</td><td class="num">${fmt(x.ratio)} كجم</td><td class="num">${fmt(x.start)} كجم</td></tr>`).join("")}
-      </tbody></table></div>
-    </details>`).join("");
-  toast("تم تحديث حساب الخامات");
+  if(!confirm("سيتم إنشاء طلبية شراء تلقائيًا من المورد الأرخص لكل خامة. قد ينتج أكثر من طلبية حسب عدد الموردين. متابعة؟"))return;
+  parent.postMessage({type:"elhelw-pc-create-purchase",items},"*");
 }
 function saveOrder(){
  localStorage.setItem("coffeeOrder",JSON.stringify({
