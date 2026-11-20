@@ -17,6 +17,37 @@
       try {
         if (message.type === "elhelw-pc-resize") {
           frame.style.height = Math.max(850, Math.min(7000, Number(message.height) || 1100)) + "px";
+        } else if (message.type === "elhelw-pc-catalog") {
+          const [recipes, recipeItems, materials, prices, suppliers] = await Promise.all([
+            supabase.from("production_recipes").select("id,name,roast_loss_percent").eq("active",true).order("sort_order"),
+            supabase.from("production_recipe_items").select("id,recipe_id,raw_material_id,output_kg_per_kg,apply_roast_loss"),
+            supabase.from("raw_materials").select("id,name,unit").eq("active",true),
+            supabase.from("supplier_material_prices").select("supplier_id,raw_material_id,unit_price"),
+            supabase.from("suppliers").select("id,name").eq("active",true)
+          ]);
+          for (const result of [recipes,recipeItems,materials,prices,suppliers]) if(result.error) throw result.error;
+          send({type:"elhelw-pc-catalog-data",recipes:recipes.data||[],recipeItems:recipeItems.data||[],materials:materials.data||[],prices:prices.data||[],suppliers:suppliers.data||[]});
+        } else if (message.type === "elhelw-pc-create-purchase") {
+          const groups = new Map();
+          for (const line of (message.items||[])) {
+            if (!line.supplier_id || !(Number(line.quantity_kg)>0)) continue;
+            if (!groups.has(line.supplier_id)) groups.set(line.supplier_id,[]);
+            groups.get(line.supplier_id).push(line);
+          }
+          const created=[];
+          for (const [supplierId, lines] of groups) {
+            const {data:order,error}=await supabase.from("supplier_purchase_orders").insert({
+              supplier_id:supplierId,status:"ordered",notes:"تم إنشاؤها من حاسبة الإنتاج"
+            }).select("id,order_number").single();
+            if(error) throw error;
+            const {error:itemsError}=await supabase.from("supplier_purchase_order_items").insert(lines.map(line=>({
+              purchase_order_id:order.id,raw_material_id:line.raw_material_id,
+              ordered_quantity_kg:line.quantity_kg,unit_price:line.unit_price
+            })));
+            if(itemsError) throw itemsError;
+            created.push({order_number:order.order_number,supplier_id:supplierId});
+          }
+          send({type:"elhelw-pc-purchase-created",orders:created});
         } else if (message.type === "elhelw-pc-refresh") {
           const { data, error } = await supabase.from("production_calculations")
             .select("id,label,inputs,result,created_at")
@@ -47,6 +78,7 @@
       }
     };
     window.addEventListener("message", host.__elhelwPcHandler);
+    frame.onload = () => frame.contentWindow.postMessage({type:"elhelw-pc-catalog"}, "*");
     frame.src = "./production-calculator/index.html";
   }
   window.renderElhelwProductionCalculator = render;
