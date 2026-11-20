@@ -166,18 +166,10 @@ function createSupplierOrders(){
   if(!confirm("سيتم إنشاء طلبية شراء تلقائيًا من المورد الأرخص لكل خامة. قد ينتج أكثر من طلبية حسب عدد الموردين. متابعة؟"))return;
   parent.postMessage({type:"elhelw-pc-create-purchase",items},"*");
 }
-function saveOrder(){
- localStorage.setItem("coffeeOrder",JSON.stringify({
-  plain:document.getElementById("plain").value,hawaji:document.getElementById("hawaji").value,
-  french:document.getElementById("french").value,hazelnut:document.getElementById("hazelnut").value,waste:document.getElementById("waste").value
- })); toast("تم حفظ الطلبية على الجهاز");
-}
-function loadOrder(){
- const x=JSON.parse(localStorage.getItem("coffeeOrder")||"null");
- if(!x){toast("لا توجد طلبية محفوظة");return}
- ["plain","hawaji","french","hazelnut","waste"].forEach(id=>document.getElementById(id).value=x[id]??0); calculate(); toast("تم استرجاع آخر طلبية");
-}
-function clearAll(){["plain","hawaji","french","hazelnut"].forEach(id=>document.getElementById(id).value="");calculate();toast("تم مسح الكميات")}
+function currentInputs(){const values={name:document.getElementById("orderName").value,waste:document.getElementById("waste").value,recipes:{}};Object.keys(recipes).forEach(id=>values.recipes[id]=document.getElementById("recipe_"+id)?.value||"");return values}
+function saveOrder(){localStorage.setItem("coffeeOrder",JSON.stringify(currentInputs()));toast("تم حفظ الطلبية على الجهاز")}
+function loadOrder(){const x=JSON.parse(localStorage.getItem("coffeeOrder")||"null");if(!x){toast("لا توجد طلبية محفوظة");return}document.getElementById("waste").value=x.waste??20;document.getElementById("orderName").value=x.name||"";Object.entries(x.recipes||{}).forEach(([id,v])=>{const el=document.getElementById("recipe_"+id);if(el)el.value=v});calculate();toast("تم استرجاع آخر طلبية")}
+function clearAll(){document.querySelectorAll("[data-recipe]").forEach(el=>el.value="");calculate();toast("تم مسح الكميات")}
 async function printResult(){
   if(!lastResult||!lastResult.totalOrder)calculate();
   if(!lastResult||!lastResult.totalOrder){toast("احسب الكميات أولاً قبل الطباعة");return}
@@ -185,7 +177,7 @@ async function printResult(){
   const orderName=(document.getElementById("orderName").value||"").trim()||"بدون اسم";
   const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const productInputs=Object.entries(orders).map(([k,v])=>`<tr><td>${esc(recipes[k].name)}</td><td>${fmt(v)} كجم</td></tr>`).join("");
-  const materialRows=Object.entries(totals).map(([item,v])=>`<tr><td>${esc(item)}</td><td>${fmt(v)} كجم</td><td>${fmt(v*1000)} جم</td></tr>`).join("");
+  const materialRows=Object.entries(totals).map(([id,v])=>`<tr><td>${esc(v.name)}</td><td>${fmt(v.quantity)} كجم</td><td>${fmt(v.quantity*1000)} جم</td></tr>`).join("");
   const detailSections=details.map(d=>`<section class="detail"><h3>${esc(d.name)} — ${fmt(d.qty)} كجم</h3><table><thead><tr><th>الخامة</th><th>النسبة في الوصفة / كجم</th><th>الكمية في المنتج</th><th>خام البداية بعد الهالك</th></tr></thead><tbody>${d.rows.map(x=>`<tr><td>${esc(x.item)}</td><td>${fmt(x.ratio)} كجم</td><td>${fmt(x.output)} كجم</td><td>${fmt(x.start)} كجم</td></tr>`).join("")}</tbody></table></section>`).join("");
   const logoSvg=await fetch("../assets/brand-logo.svg",{cache:"no-store"}).then(response=>{if(!response.ok)throw new Error("تعذر تحميل شعار بن الحلو");return response.text()});
   const logo=logoSvg.replace("<svg ","<svg class=\"logo\" ");
@@ -238,7 +230,7 @@ calculate();
  }
  addEventListener("message",e=>{
   const d=e.data||{};
-  if(d.type==="elhelw-pc-history")renderHistory(d.rows);
+  if(d.type==="elhelw-pc-history")renderHistory(d.rows);\n  if(d.type==="elhelw-pc-catalog-data")applyCatalog(d);\n  if(d.type==="elhelw-pc-purchase-created")toast("تم إنشاء "+(d.orders||[]).length+" طلبية مورد تلقائيًا");
   if(d.type==="elhelw-pc-saved"){toast("تم حفظ الطلبية");refresh()}
   if(d.type==="elhelw-pc-deleted"){toast("تم حذف الطلبية");refresh()}
   if(d.type==="elhelw-pc-error")toast("تعذر تنفيذ العملية: "+d.message);
@@ -246,7 +238,7 @@ calculate();
  });
  window.saveOrder=function(){
   calculate();if(!lastResult||!lastResult.totalOrder){toast("أدخل كمية واحدة على الأقل");return}
-  const inputs={name:$("orderName").value.trim(),plain:$("plain").value,hawaji:$("hawaji").value,french:$("french").value,hazelnut:$("hazelnut").value,waste:$("waste").value};
+  const inputs=currentInputs();
   parent.postMessage({type:"elhelw-pc-save",label:inputs.name||("طلبية "+new Date().toLocaleString("ar-EG")),inputs,result:lastResult},"*");
  };
  window.loadOrder=function(){if(!savedHistory.length){refresh();toast("جارٍ تحميل السجل");return}restore(savedHistory[0])};
