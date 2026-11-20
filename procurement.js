@@ -61,7 +61,7 @@
     root.querySelectorAll("[data-price]").forEach(b=>b.onclick=()=>priceForm(b.dataset.price));
   }
   function materialForm(){
-    const html='<form id="material-form" class="form-panel"><h3>إضافة خامة</h3><div class="form-grid">'+input("اسم الخامة","name","text",'required maxlength="150"')+select("وحدة القياس","unit",[{value:"kg",label:"كيلوجرام"},{value:"g",label:"جرام"},{value:"liter",label:"لتر"},{value:"piece",label:"قطعة"}])+'</div><div class="form-actions"><button class="primary">حفظ</button><button type="button" class="secondary" data-close>إلغاء</button></div></form>';
+    const html='<form id="material-form" class="form-panel"><h3>إضافة خامة</h3><div class="form-grid">'+input("اسم الخامة","name","text",'required maxlength="150"')+select("وحدة القياس","unit",[{value:"kg",label:"كيلوجرام"}])+'</div><div class="form-actions"><button class="primary">حفظ</button><button type="button" class="secondary" data-close>إلغاء</button></div></form>';
     root.insertAdjacentHTML("afterbegin",html);const f=q("material-form");f.querySelector("[data-close]").onclick=()=>f.remove();
     f.onsubmit=async e=>{e.preventDefault();const d=new FormData(f);try{await save("raw_materials",{name:String(d.get("name")).trim(),unit:d.get("unit")});notify("تمت إضافة الخامة");await render()}catch(x){showError(x)}};
   }
