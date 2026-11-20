@@ -226,7 +226,9 @@ calculate();
  }
  addEventListener("message",e=>{
   const d=e.data||{};
-  if(d.type==="elhelw-pc-history")renderHistory(d.rows);\n  if(d.type==="elhelw-pc-catalog-data")applyCatalog(d);\n  if(d.type==="elhelw-pc-purchase-created")toast("تم إنشاء "+(d.orders||[]).length+" طلبية مورد تلقائيًا");
+  if(d.type==="elhelw-pc-history")renderHistory(d.rows);
+  if(d.type==="elhelw-pc-catalog-data")applyCatalog(d);
+  if(d.type==="elhelw-pc-purchase-created")toast("تم إنشاء "+(d.orders||[]).length+" طلبية مورد تلقائيًا");
   if(d.type==="elhelw-pc-saved"){toast("تم حفظ الطلبية");refresh()}
   if(d.type==="elhelw-pc-deleted"){toast("تم حذف الطلبية");refresh()}
   if(d.type==="elhelw-pc-error")toast("تعذر تنفيذ العملية: "+d.message);
