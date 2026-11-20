@@ -129,13 +129,14 @@ function calculate(){
   for(const [id,qty] of Object.entries(orders)){
     const r=recipes[id],rows=[];
     for(const item of r.items){
-      const output=qty*item.ratio,start=item.applyRoastLoss?output/(1-waste/100):output;
+      const recipeWaste=waste!==20?waste:Number(r.roastLoss??20);
+      const output=qty*item.ratio,start=item.applyRoastLoss?output/(1-recipeWaste/100):output;
       const key=item.materialId;
       if(!totals[key])totals[key]={name:item.material,quantity:0};
       totals[key].quantity+=start;
       rows.push({materialId:key,item:item.material,ratio:item.ratio,output,start});
     }
-    details.push({id,name:r.name,qty,rows});
+    details.push({id,name:r.name,qty,waste:Number(r.roastLoss??waste),rows});
   }
   const totalOrder=Object.values(orders).reduce((a,b)=>a+b,0);
   const requirements=Object.entries(totals).map(([materialId,x])=>{const available=Number(stockBalances.find(b=>b.raw_material_id===materialId)?.quantity_kg||0);return {materialId,name:x.name,quantity_kg:x.quantity,available_kg:available,purchase_kg:Math.max(0,x.quantity-available)}});
