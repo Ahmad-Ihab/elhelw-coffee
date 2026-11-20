@@ -122,10 +122,6 @@ function applyCatalog(data){
   }
   recipeCatalogReady=true;renderRecipeInputs();calculate();
 }
-let lastResult=null, deferredPrompt=null;
-function q(id){return Math.max(0,parseFloat(document.getElementById(id).value)||0)}
-function fmt(x){return Math.abs(x)<1e-9?"0":x.toFixed(3).replace(/\.?0+$/,"")}
-function raw(output,item,waste){return roastLossItems.has(item)?output/(1-waste/100):output}
 function calculate(){
   const orders={};for(const id of Object.keys(recipes)){const v=q(id);if(v>0)orders[id]=v}
   const waste=Math.min(99.9,Math.max(0,parseFloat(document.getElementById("waste").value)||0));
@@ -215,8 +211,8 @@ calculate();
  function refresh(){parent.postMessage({type:"elhelw-pc-refresh"},"*")}
  function restore(row){
   const x=row.inputs||{};
-  ["plain","hawaji","french","hazelnut","waste"].forEach(id=>$(id).value=x[id]??(id==="waste"?20:""));
-  $("orderName").value=x.name||"";
+  $("waste").value=x.waste??20; $("orderName").value=x.name||"";
+  Object.entries(x.recipes||{}).forEach(([id,v])=>{const el=$("recipe_"+id);if(el)el.value=v});
   calculate();toast("تم استرجاع الطلبية");resize();
  }
  function renderHistory(rows){
