@@ -4,13 +4,13 @@
   const num = n => Number(n||0).toLocaleString("en-US",{maximumFractionDigits:3});
   const money = n => new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:2}).format(Number(n||0));
   let sb, root, suppliers=[], materials=[], prices=[], orders=[], balances=[];
-  let view="suppliers";
+  let view="suppliers", recipes=[], recipeItems=[];
   const q = id => root.querySelector("#"+id);
   const notify = msg => { if(window.elhelwToast) window.elhelwToast(msg); else alert(msg); };
   const rows = async (table, select="*") => { const {data,error}=await sb.from(table).select(select); if(error) throw error; return data||[]; };
   const save = async (table,payload) => { const {error}=await sb.from(table).insert(payload); if(error) throw error; };
   const tabs = () => '<div class="tabs" style="margin:12px 0;flex-wrap:wrap">'+[
-    ["suppliers","الموردون"],["materials","الخامات والأسعار"],["orders","طلبيات الموردين"],["stock","مخزون الخامات"]
+    ["suppliers","الموردون"],["materials","الخامات والأسعار"],["orders","طلبيات الموردين"],["stock","مخزون الخامات"],["recipes","توليفات الإنتاج"]
   ].map(([id,label])=>'<button class="tab '+(view===id?'active':'')+'" data-view="'+id+'">'+label+'</button>').join("")+'</div>';
   const panel = (title,body,action="") => '<section class="panel-card">'+
     '<div class="section-head"><h2>'+title+'</h2>'+action+'</div>'+body+'</section>';
@@ -27,6 +27,7 @@
       rows("supplier_purchase_orders","id,order_number,supplier_id,status,order_date,expected_date,supplier_invoice_number,notes,created_at"),
       rows("raw_material_stock_balances","raw_material_id,quantity_kg")
     ]);
+    [recipes,recipeItems]=await Promise.all([rows("production_recipes"),rows("production_recipe_items")]);
     const ids=orders.map(x=>x.id);
     let items=[];
     if(ids.length){const {data,error}=await sb.from("supplier_purchase_order_items").select("id,purchase_order_id,raw_material_id,ordered_quantity_kg,received_quantity_kg,unit_price").in("purchase_order_id",ids);if(error)throw error;items=data||[];}
@@ -119,10 +120,38 @@
       panel("تسوية رصيد افتتاحي / جرد",'<form id="adjust-form" class="form-grid">'+select("الخامة","raw_material_id",materials.map(m=>({value:m.id,label:m.name})))+select("نوع الحركة","direction",[{value:"in",label:"إضافة للمخزون"},{value:"out",label:"خصم من المخزون"}])+input("الكمية بالكيلو","quantity","number",'min="0.001" step="0.001" required')+input("ملاحظات","notes")+'</form>'+btn("save-adjust","حفظ التسوية")));
     q("save-adjust").onclick=async()=>{const f=q("adjust-form"),d=new FormData(f);try{const {error}=await sb.rpc("admin_adjust_raw_material_stock",{p_raw_material_id:d.get("raw_material_id"),p_quantity_kg:Number(d.get("quantity")),p_direction:d.get("direction"),p_notes:d.get("notes")||null});if(error)throw error;notify("تم تحديث المخزون");await render()}catch(x){showError(x)}};
   }
+  function recipesPage(){
+    const body=recipes.map(r=>{
+      const items=recipeItems.filter(i=>i.recipe_id===r.id);
+      return '<tr><td><b>'+esc(r.name)+'</b></td><td>'+items.length+' خامات</td><td>'+num(r.roast_loss_percent)+'%</td><td>'+(r.active?'نشطة':'موقوفة')+'</td><td><button class="secondary" data-edit-recipe="'+r.id+'">تعديل</button></td></tr>';
+    }).join("");
+    set(panel("توليفات الإنتاج",'<p class="muted">احفظ حتى 3 توليفات أو أكثر. كل توليفة لها مكوناتها ونسبة الهالك الخاصة بها، وتستخدمها الحاسبة مباشرة.</p><div class="table-wrap"><table><thead><tr><th>التوليفة</th><th>المكونات</th><th>هالك التحميص</th><th>الحالة</th><th></th></tr></thead><tbody>'+(body||'<tr><td colspan="5" class="empty">لم تتم إضافة توليفات بعد</td></tr>')+'</tbody></table></div>',btn("add-recipe","إضافة توليفة")));
+    q("add-recipe").onclick=()=>recipeForm();
+    root.querySelectorAll("[data-edit-recipe]").forEach(b=>b.onclick=()=>recipeForm(recipes.find(r=>r.id===b.dataset.editRecipe)));
+  }
+  function recipeForm(recipe){
+    if(!materials.length)return notify("أضف الخامات أولاً");
+    const existing=recipe?recipeItems.filter(i=>i.recipe_id===recipe.id):[];
+    const html='<form id="recipe-form" class="form-panel"><h3>'+(recipe?"تعديل التوليفة":"توليفة إنتاج جديدة")+'</h3><div class="form-grid">'+input("اسم التوليفة","name","text",'required maxlength="100"')+input("هالك التحميص %","roast_loss_percent","number",'min="0" max="99.9" step="0.1" value="20" required')+'<label class="field">الحالة<select name="active"><option value="true">نشطة</option><option value="false">موقوفة</option></select></label><div id="recipe-lines" style="grid-column:1/-1"></div></div><div class="form-actions"><button type="button" class="secondary" id="add-recipe-line">إضافة مكون</button><button class="primary">حفظ التوليفة</button><button type="button" class="secondary" data-close>إلغاء</button></div></form>';
+    root.insertAdjacentHTML("afterbegin",html);const f=q("recipe-form"),lines=q("recipe-lines");
+    if(recipe){f.elements.name.value=recipe.name;f.elements.roast_loss_percent.value=recipe.roast_loss_percent;f.elements.active.value=String(recipe.active)}
+    f.querySelector("[data-close]").onclick=()=>f.remove();
+    const addLine=(item={})=>{const wrap=document.createElement("div");wrap.className="form-grid";wrap.style.cssText="border:1px solid var(--line);padding:10px;border-radius:12px;margin:8px 0";wrap.innerHTML=select("الخامة","raw_material_id",materials.filter(m=>m.active).map(m=>({value:m.id,label:m.name})))+input("كمية الخامة لكل 1 كجم منتج","ratio","number",'required min="0.000001" step="0.000001"')+'<label class="field">يطبق عليها هالك التحميص؟<select name="loss"><option value="false">لا</option><option value="true">نعم</option></select></label><button type="button" class="secondary remove-line">حذف المكون</button>';lines.append(wrap);if(item.raw_material_id){wrap.querySelector('[name="raw_material_id"]').value=item.raw_material_id;wrap.querySelector('[name="ratio"]').value=item.output_kg_per_kg;wrap.querySelector('[name="loss"]').value=String(item.apply_roast_loss)}wrap.querySelector(".remove-line").onclick=()=>wrap.remove();};
+    if(existing.length)existing.forEach(addLine);else addLine();
+    q("add-recipe-line").onclick=()=>addLine();
+    f.onsubmit=async e=>{e.preventDefault();const d=new FormData(f),items=[...lines.querySelectorAll(".form-grid")].map(w=>({raw_material_id:w.querySelector('[name="raw_material_id"]').value,output_kg_per_kg:Number(w.querySelector('[name="ratio"]').value),apply_roast_loss:w.querySelector('[name="loss"]').value==="true"}));if(!items.length||items.some(x=>!x.raw_material_id||!x.output_kg_per_kg)||new Set(items.map(x=>x.raw_material_id)).size!==items.length)return notify("تأكد من المكونات وعدم تكرار الخامة");try{
+      const payload={name:String(d.get("name")).trim(),roast_loss_percent:Number(d.get("roast_loss_percent")),active:d.get("active")==="true"};
+      let recipeId=recipe?.id;
+      if(recipe){const {error}=await sb.from("production_recipes").update({...payload,updated_at:new Date().toISOString()}).eq("id",recipe.id);if(error)throw error;const del=await sb.from("production_recipe_items").delete().eq("recipe_id",recipe.id);if(del.error)throw del.error;}
+      else{const {data,error}=await sb.from("production_recipes").insert(payload).select("id").single();if(error)throw error;recipeId=data.id;}
+      const ins=await sb.from("production_recipe_items").insert(items.map(x=>({...x,recipe_id:recipeId})));if(ins.error)throw ins.error;
+      notify("تم حفظ التوليفة، وستظهر في الحاسبة");await render();
+    }catch(x){showError(x)}};
+  }
   async function render(){
     root.innerHTML='<div class="panel-card">جارٍ تحميل بيانات الموردين والخامات...</div>';
     await load();
-    if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else stockPage();
+    if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else if(view==="recipes")recipesPage();else stockPage();
   }
   window.renderElhelwProcurement=async function(target,client){
     root=target;sb=client;view="suppliers";
