@@ -812,9 +812,9 @@
       const response=await fetch("https://api.github.com/repos/Ahmad-Ihab/elhelw-coffee/releases/latest",{cache:"no-store",headers:{Accept:"application/vnd.github+json"}});
       if(!response.ok)throw new Error("تعذر التحقق من وجود تحديث.");
       const release=await response.json();
-      const match=String(release.body||"").match(/versionCode\\s*:\\s*(\\d+)/i);
+      const match=String(release.body||"").match(/versionCode\s*:\s*(\\d+)/i);
       const latestCode=match?Number(match[1]):0;
-      const apk=(release.assets||[]).find(a=>/\\.apk$/i.test(a.name));
+      const apk=(release.assets||[]).find(a=>/\.apk$/i.test(a.name));
       if(!apk||!latestCode||latestCode<=Number(current.versionCode))return;
       const version=String(release.tag_name||"").replace(/^v/i,"");
       if(!confirm("يتوفر تحديث جديد لتطبيق Elhelw Distribution\\nالإصدار الحالي: "+current.versionName+"\\nالإصدار الجديد: "+version+"\\n\\nهل تريد تنزيل التحديث الآن؟"))return;
