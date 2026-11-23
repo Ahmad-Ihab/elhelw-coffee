@@ -328,10 +328,34 @@
         requestAnimationFrame(()=>map.invalidateSize());
         if(status)status.textContent="اضغط على الخريطة لتحديد الموقع أو اسحب الدبوس لتعديله.";
       }catch(error){if(status)status.textContent="الخريطة غير متاحة حاليًا؛ يمكنك إدخال الإحداثيات يدويًا أو استخدام GPS.";}
-      $("cafe-use-gps").onclick=()=>{
-        if(!navigator.geolocation)return toast("تحديد الموقع غير مدعوم على هذا الجهاز");
-        status.textContent="جارٍ تحديد موقعك...";
-        navigator.geolocation.getCurrentPosition(pos=>{setPoint(pos.coords.latitude,pos.coords.longitude);if(status)status.textContent="تم تحديد موقعك. حرّك الدبوس إذا لزم الأمر.";},err=>{if(status)status.textContent="تعذر تحديد الموقع. تأكد من تفعيل GPS والسماح للتطبيق بالوصول للموقع.";},{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+      $("cafe-use-gps").onclick=async()=>{
+        const gpsButton=$("cafe-use-gps");
+        gpsButton.disabled=true;
+        if(status)status.textContent="جارٍ طلب صلاحية الموقع وتحديد موقعك...";
+        try{
+          const options={enableHighAccuracy:true,timeout:25000,maximumAge:0};
+          let pos;
+          const nativeGeo=window.Capacitor?.Plugins?.Geolocation;
+          if(nativeGeo){
+            const permission=await nativeGeo.requestPermissions();
+            if(permission.location!=="granted"&&permission.coarseLocation!=="granted"){
+              throw new Error("تم رفض صلاحية الموقع. افتح إعدادات التطبيق واسمح بالوصول إلى الموقع أثناء استخدام التطبيق.");
+            }
+            pos=await nativeGeo.getCurrentPosition(options);
+          }else{
+            if(!navigator.geolocation)throw new Error("تحديد الموقع غير مدعوم في هذا المتصفح.");
+            pos=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,options));
+          }
+          setPoint(pos.coords.latitude,pos.coords.longitude);
+          if(status)status.textContent="تم تحديد موقعك. حرّك الدبوس إذا لزم الأمر.";
+        }catch(error){
+          console.error("Cafe GPS error:",error);
+          let message=error?.message||"حدث خطأ غير معروف أثناء تحديد الموقع.";
+          if(error?.code===1)message="تم رفض صلاحية الموقع. اسمح للتطبيق بالوصول إلى الموقع من إعدادات أندرويد.";
+          else if(error?.code===2)message="تعذر الوصول إلى إشارة الموقع. جرّب تفعيل دقة الموقع العالية.";
+          else if(error?.code===3)message="انتهت مهلة تحديد الموقع. جرّب مرة أخرى في مكان مفتوح.";
+          if(status)status.textContent=message;
+        }finally{gpsButton.disabled=false;}
       };
       [latInput,lngInput].forEach(input=>input.addEventListener("change",()=>{
         const lat=Number(latInput.value),lng=Number(lngInput.value);
