@@ -380,9 +380,31 @@
     }
     $("add-cafe").onclick=async()=>{
       const ds=profile.role==="admin"?await rows("distributors"):[];
-      showForm(formPanel("cafe-form","كافيه جديد",(profile.role==="admin"?selectField("الموزع المسؤول","distributor_id",ds.map(x=>({value:x.id,label:x.name}))):"")+field("اسم الكافيه","name")+field("اسم المسؤول","contact_name")+field("الهاتف","phone")+field("العنوان","address")+'<label class="field">ملاحظات عن الكافيه<textarea name="notes" rows="3" style="width:100%"></textarea></label>'+mapFields()));
+      const [ps,balances]=await Promise.all([rows("products"),rows("sample_stock_balances")]);
+      const distributorOptions=profile.role==="admin"?selectField("الموزع المسؤول","distributor_id",ds.filter(x=>x.active).map(x=>({value:x.id,label:x.name}))):"";
+      const sampleBlock='<label class="field" style="display:flex;align-items:center;gap:10px"><input type="checkbox" id="cafe-got-samples" name="got_samples" style="width:auto"> الكافيه استلم عينات أثناء التسجيل</label><div id="cafe-sample-fields" hidden>'+selectField("صنف العينة","sample_product_id",[])+bagFields("sample_bags_")+'<div class="field"><span>إجمالي وزن العينات</span><strong id="cafe-sample-total">0.000 كجم</strong></div>'+field("ملاحظات العينات","sample_feedback")+'</div>';
+      showForm(formPanel("cafe-form","كافيه جديد",distributorOptions+field("اسم الكافيه","name")+field("اسم المسؤول","contact_name")+field("الهاتف","phone")+field("العنوان","address")+'<label class="field">ملاحظات عن الكافيه<textarea name="notes" rows="3" style="width:100%"></textarea></label>'+sampleBlock+mapFields()));
       const form=$("cafe-form");setupMap(form);
-      form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);try{const coords=coordinates(form);const p={name:String(d.get("name")||"").trim(),contact_name:String(d.get("contact_name")||"").trim()||null,phone:String(d.get("phone")||"").trim()||null,address:String(d.get("address")||"").trim()||null,notes:String(d.get("notes")||"").trim()||null,distributor_id:distributor?.id||d.get("distributor_id"),...coords};const {error}=await sb.from("cafes").insert(p);if(error)throw error;toast("تمت إضافة الكافيه");render()}catch(x){fail(x)}};
+      const sampleToggle=$("cafe-got-samples"),sampleFields=$("cafe-sample-fields"),productSelect=form.elements.sample_product_id;
+      const stockDistributor=()=>profile.role==="admin"?form.elements.distributor_id.value:distributor?.id;
+      const refreshSampleProducts=()=>{
+        const did=stockDistributor();
+        const allowed=balances.filter(b=>b.distributor_id===did&&Number(b.quantity)>0).map(b=>b.product_id);
+        productSelect.innerHTML='<option value="">اختر</option>'+ps.filter(p=>p.active&&allowed.includes(p.id)).map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("");
+      };
+      if(profile.role==="admin")form.elements.distributor_id.addEventListener("change",refreshSampleProducts);
+      refreshSampleProducts();
+      sampleToggle.addEventListener("change",()=>{sampleFields.hidden=!sampleToggle.checked});
+      const updateSampleKg=()=>{const bags=readBags(form,"sample_bags_");const valid=Object.values(bags).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(bags);$("cafe-sample-total").textContent=valid?kg.toFixed(3)+" كجم":"راجع الأعداد";return valid&&kg>0?kg:NaN};
+      ["25","50","100","200","500","1000"].forEach(k=>form.elements["sample_bags_"+k].addEventListener("input",updateSampleKg));
+      form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form);try{
+        const coords=coordinates(form);
+        const p={name:String(d.get("name")||"").trim(),contact_name:String(d.get("contact_name")||"").trim()||null,phone:String(d.get("phone")||"").trim()||null,address:String(d.get("address")||"").trim()||null,notes:String(d.get("notes")||"").trim()||null,distributor_id:distributor?.id||d.get("distributor_id"),...coords};
+        let productId=null,bags=null,feedback=null;
+        if(sampleToggle.checked){const kg=updateSampleKg();if(!Number.isFinite(kg))return toast("أدخل كمية عينات صحيحة");productId=d.get("sample_product_id");if(!productId)return toast("اختر صنف العينة المتاح مع الموزع");bags=readBags(form,"sample_bags_");feedback=d.get("sample_feedback")||null}
+        const {data,error}=await sb.rpc("create_cafe_with_optional_sample",{p_cafe:p,p_product_id:productId,p_bags:bags,p_feedback:feedback});if(error)throw error;
+        toast(sampleToggle.checked?"تمت إضافة الكافيه وتسجيل العينات وخصمها من مخزون الموزع":"تمت إضافة الكافيه");render()
+      }catch(x){fail(x)}};
     };
   }
   async function orders(){
