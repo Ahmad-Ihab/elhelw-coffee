@@ -15,28 +15,28 @@ begin
   end if;
 
   -- Delete dependent ledgers first; keep this operation atomic.
-  delete from public.payment_allocations;
-  delete from public.remittance_allocations;
-  delete from public.remittance_commission_allocations;
-  delete from public.sales_return_refunds;
-  delete from public.return_quarantine_movements;
-  delete from public.distributor_commission_adjustments;
-  delete from public.sales_return_items;
-  delete from public.sales_returns;
-  delete from public.sales_invoice_items;
-  delete from public.sales_invoices;
-  delete from public.order_items;
-  delete from public.orders;
-  delete from public.sample_items;
-  delete from public.samples;
-  delete from public.cafe_payments;
-  delete from public.distributor_expenses;
-  delete from public.distributor_remittances;
-  delete from public.stock_movements;
-  delete from public.stock_balances;
-  delete from public.company_stock_movements;
-  delete from public.company_stock_balances;
-  delete from public.cafes;
+  delete from public.payment_allocations where true;
+  delete from public.remittance_allocations where true;
+  delete from public.remittance_commission_allocations where true;
+  delete from public.sales_return_refunds where true;
+  delete from public.return_quarantine_movements where true;
+  delete from public.distributor_commission_adjustments where true;
+  delete from public.sales_return_items where true;
+  delete from public.sales_returns where true;
+  delete from public.sales_invoice_items where true;
+  delete from public.sales_invoices where true;
+  delete from public.order_items where true;
+  delete from public.orders where true;
+  delete from public.sample_items where true;
+  delete from public.samples where true;
+  delete from public.cafe_payments where true;
+  delete from public.distributor_expenses where true;
+  delete from public.distributor_remittances where true;
+  delete from public.stock_movements where true;
+  delete from public.stock_balances where true;
+  delete from public.company_stock_movements where true;
+  delete from public.company_stock_balances where true;
+  delete from public.cafes where true;
 
   -- Restart business-facing document numbers for the next clean test run.
   perform pg_catalog.setval(pg_catalog.pg_get_serial_sequence('public.orders','order_number'), 1, false);
