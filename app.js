@@ -15,13 +15,13 @@
   async function rows(table, query){let q=sb.from(table).select(query||"*");let {data,error}=await q; if(error)throw error;return data||[]}
   async function rpc(name,args){let {data,error}=await sb.rpc(name,args);if(error)throw error;return data}
   function setContent(html){$("content").innerHTML=html}
-  const bagFields = p => [["50","50 جرام"],["100","100 جرام"],["200","200 جرام"],["500","500 جرام"],["1000","1 كيلو"]].map(([k,l])=>field("عدد أكياس "+l,p+k,"number",'min="0" step="1" value="0" required')).join("");
-  const readBags = (f,p) => Object.fromEntries(["50","100","200","500","1000"].map(k=>[k,Number(f.elements[p+k].value||0)]));
-  const bagsKg = b => (50*b["50"]+100*b["100"]+200*b["200"]+500*b["500"]+1000*b["1000"])/1000;
-  const bagsLabel = b => b ? ["50","100","200","500","1000"].map(k=>Number(b[k]||0)?k+"جم: "+b[k]:"").filter(Boolean).join(" · ") : "تفاصيل الأكياس غير متاحة";
+  const bagFields = p => [["25","25 جرام"],["50","50 جرام"],["100","100 جرام"],["200","200 جرام"],["500","500 جرام"],["1000","1 كيلو"]].map(([k,l])=>field("عدد أكياس "+l,p+k,"number",'min="0" step="1" value="0" required')).join("");
+  const readBags = (f,p) => Object.fromEntries(["25","50","100","200","500","1000"].map(k=>[k,Number(f.elements[p+k].value||0)]));
+  const bagsKg = b => (25*b["25"]+50*b["50"]+100*b["100"]+200*b["200"]+500*b["500"]+1000*b["1000"])/1000;
+  const bagsLabel = b => b ? ["25","50","100","200","500","1000"].map(k=>Number(b[k]||0)?k+"جم: "+b[k]:"").filter(Boolean).join(" · ") : "تفاصيل الأكياس غير متاحة";
   const bagsTable = b => {
     if(!b) return '<span class="muted">تفاصيل الأكياس غير متاحة</span>';
-    const sizes=[["50","50 جم"],["100","100 جم"],["200","200 جم"],["500","500 جم"],["1000","1 كجم"]];
+    const sizes=[["25","25 جم"],["50","50 جم"],["100","100 جم"],["200","200 جم"],["500","500 جم"],["1000","1 كجم"]];
     const items=sizes.map(([k,label])=>({label,count:Number(b[k]||0)})).filter(x=>x.count>0);
     if(!items.length) return '<span class="muted">لا توجد أكياس</span>';
     const total=items.reduce((sum,x)=>sum+x.count,0);
@@ -118,7 +118,7 @@
     ]);
     const total=balances.reduce((sum,b)=>{
       const counts=b.bag_counts||{};
-      const hasBagCounts=["50","100","200","500","1000"].some(k=>Number(counts[k]||0)>0);
+      const hasBagCounts=["25","50","100","200","500","1000"].some(k=>Number(counts[k]||0)>0);
       return sum+(hasBagCounts?bagsKg(counts):Number(b.quantity||0));
     },0);
     const pending=orders.filter(o=>!["delivered","cancelled"].includes(o.status)).length;
@@ -287,7 +287,7 @@
       const [ds2,ps2]=await Promise.all([rows("distributors"),rows("products")]);
       showForm(formPanel("receive-form","تسجيل استلام بضاعة",selectField("اسم الصنف","product_id",ps2.map(x=>({value:x.id,label:x.name})))+selectField("الموزع","distributor_id",ds2.map(x=>({value:x.id,label:x.name})))+bagFields("bags_")+'<div class="field"><span>إجمالي الوزن</span><strong id="stock-total-kg">0.000 كجم</strong></div>'+field("ملاحظات","notes")));
       const form=$("receive-form");const update=()=>{const v=readBags(form,"bags_");const ok=Object.values(v).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(v);$("stock-total-kg").textContent=ok?kg.toFixed(3)+" كجم":"راجع الأعداد";return ok?kg:NaN};
-      ["50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));
+      ["25","50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));
       form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form);const kg=update();if(!Number.isFinite(kg)||kg<=0)return toast("أدخل أعداد أكياس صحيحة");try{await rpc("admin_receive_stock_bags",{p_distributor_id:f.get("distributor_id"),p_product_id:f.get("product_id"),p_bags:readBags(form,"bags_"),p_notes:f.get("notes")||null});toast("تم الاستلام: "+kg.toFixed(3)+" كجم");render()}catch(x){fail(x)}};
     };
   }
@@ -391,7 +391,7 @@
     const body=os.map(o=>`<tr><td>#${o.order_number}</td><td>${esc(cn[o.cafe_id]||"")}</td><td>${esc(dn[o.distributor_id]||"")}</td><td>${esc(o.expected_delivery||"-")}</td><td><span class="pill">${esc(o.status)}</span>${o.status==="cancelled"?'<small class="muted">ملغاة</small>':""}</td><td>${o.status==="confirmed"||o.status==="preparing"?`<button class="primary" data-deliver="${o.id}">تأكيد التسليم</button> <button class="danger" data-cancel-order="${o.id}">إلغاء الطلبية</button>`:""}</td></tr>`).join("");
     setContent(section("الطلبيات",'<button id="new-order" class="primary">طلبية جديدة</button>')+table(["رقم","الكافيه","الموزع","موعد التسليم","الحالة","إجراء"],body));
     $("new-order").onclick=async()=>{const [cs2,ps2,ds2]=await Promise.all([rows("cafes"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);showForm(formPanel("order-form","طلبية جديدة",selectField("الكافيه","cafe_id",cs2.map(x=>({value:x.id,label:x.name})))+(profile.role==="admin"?selectField("الموزع","distributor_id",ds2.map(x=>({value:x.id,label:x.name}))):"")+field("موعد التسليم","expected_delivery","date")+selectField("المنتج","product_id",ps2.map(x=>({value:x.id,label:x.name})))+bagFields("bags_")+'<div class="field"><span>إجمالي الوزن</span><strong id="order-total-kg">0.000 كجم</strong></div>'+field("ملاحظات","notes")));
-      const form=$("order-form");const update=()=>{const v=readBags(form,"bags_");const ok=Object.values(v).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(v);$("order-total-kg").textContent=ok?kg.toFixed(3)+" كجم":"راجع الأعداد";return ok?kg:NaN};["50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));
+      const form=$("order-form");const update=()=>{const v=readBags(form,"bags_");const ok=Object.values(v).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(v);$("order-total-kg").textContent=ok?kg.toFixed(3)+" كجم":"راجع الأعداد";return ok?kg:NaN};["25","50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));
       form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form);const kg=update();if(!Number.isFinite(kg)||kg<=0)return toast("أدخل أعداد أكياس صحيحة");try{await rpc("create_distributor_order_bags",{p_cafe_id:f.get("cafe_id"),p_distributor_id:distributor?.id||f.get("distributor_id"),p_product_id:f.get("product_id"),p_bags:readBags(form,"bags_"),p_expected_delivery:f.get("expected_delivery")||null,p_notes:f.get("notes")||null});toast("تم إنشاء الطلبية · "+kg.toFixed(3)+" كجم");render()}catch(x){fail(x)}}};
     $("content").querySelectorAll("[data-deliver]").forEach(b=>b.onclick=async()=>{if(!confirm("تأكيد تسليم الطلبية وخصمها من المخزون؟"))return;try{await rpc("deliver_order",{p_order_id:b.dataset.deliver});toast("تم التسليم وإنشاء الفاتورة");render()}catch(x){fail(x)}});
     $("content").querySelectorAll("[data-cancel-order]").forEach(b=>b.onclick=async()=>{
@@ -417,7 +417,7 @@
       '<div class="panel-card"><h3>مخزون عينات الشركة</h3><div class="inventory-stock-list">'+(company.map(b=>stockCard(b,"مخزون الشركة")).join("")||'<p class="empty">لا يوجد مخزون عينات مسجل.</p>')+'</div></div>'+
       '<div class="panel-card"><h3>مخزون العينات مع الموزعين</h3><div class="inventory-stock-list">'+(distributed.map(b=>stockCard(b,"الموزع: "+(dn[b.distributor_id]||""))).join("")||'<p class="empty">لم يتم تسليم عينات لأي موزع.</p>')+'</div></div>'+
       '<div class="panel-card"><h3>سجل حركات العينات</h3>'+table(["التاريخ","الصنف","الموزع / المصدر","الحركة","الكمية","تفاصيل الأكياس","ملاحظات"],movementRows)+'</div>');
-    const bindBagsForm=(formId,totalId)=>{const form=$(formId);const update=()=>{const bags=readBags(form,"bags_");const valid=Object.values(bags).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(bags);$(totalId).textContent=valid?kg.toFixed(3)+" كجم":"راجع الأعداد";return valid&&kg>0?kg:NaN};["50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));return update};
+    const bindBagsForm=(formId,totalId)=>{const form=$(formId);const update=()=>{const bags=readBags(form,"bags_");const valid=Object.values(bags).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(bags);$(totalId).textContent=valid?kg.toFixed(3)+" كجم":"راجع الأعداد";return valid&&kg>0?kg:NaN};["25","50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));return update};
     $("sample-company-add").onclick=()=>{showForm(formPanel("sample-company-form","إضافة مخزون عينات للشركة",selectField("الصنف","product_id",ps.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+bagFields("bags_")+'<div class="field"><span>الإجمالي</span><strong id="sample-company-total">0.000 كجم</strong></div>'+field("ملاحظات","notes")+selectField("الحركة","direction",[{value:"in",label:"إضافة للمخزون"},{value:"out",label:"خصم / تسوية"}])));const form=$("sample-company-form"),update=bindBagsForm("sample-company-form","sample-company-total");form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),kg=update();if(!Number.isFinite(kg))return toast("أدخل كميات صحيحة");try{await rpc("admin_adjust_sample_company_stock",{p_product_id:d.get("product_id"),p_bags:readBags(form,"bags_"),p_direction:d.get("direction"),p_notes:d.get("notes")||null});toast("تم تحديث مخزون عينات الشركة");render()}catch(x){fail(x)}}};
     $("sample-issue").onclick=()=>{showForm(formPanel("sample-issue-form","تسليم عينات لموزع",selectField("الموزع","distributor_id",ds.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+selectField("الصنف","product_id",ps.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+bagFields("bags_")+'<div class="field"><span>الإجمالي</span><strong id="sample-issue-total">0.000 كجم</strong></div>'+field("ملاحظات","notes")));const form=$("sample-issue-form"),update=bindBagsForm("sample-issue-form","sample-issue-total");form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),kg=update();if(!Number.isFinite(kg))return toast("أدخل كميات صحيحة");try{await rpc("admin_issue_sample_stock",{p_distributor_id:d.get("distributor_id"),p_product_id:d.get("product_id"),p_bags:readBags(form,"bags_"),p_notes:d.get("notes")||null});toast("تم تسليم العينات للموزع");render()}catch(x){fail(x)}}};
   }
@@ -432,7 +432,7 @@
     setContent(section("مخزون العينات",'<button id="new-sample" class="primary">تسجيل توزيع عينة</button>')+
       '<div class="inventory-stock-list">'+(cards||'<div class="empty">لا يوجد مخزون عينات معك حاليًا. اطلب من الإدارة تسليم عينات لك.</div>')+'</div>'+
       '<div class="panel-card"><h3>سجل العينات الموزعة على الكافيهات</h3>'+table(["الكافيه","التاريخ","التقييم / الملاحظات","تكلفة تسويقية"],body)+'</div>');
-    $("new-sample").onclick=()=>{const available=bs.filter(b=>b.quantity>0);showForm(formPanel("sample-form","تسجيل عينة لكافيه",selectField("الكافيه","cafe_id",cs.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+selectField("الصنف المتاح بالعينات","product_id",available.map(b=>({value:b.product_id,label:pn[b.product_id]||"صنف"})))+bagFields("bags_")+'<div class="field"><span>إجمالي الوزن</span><strong id="sample-total-kg">0.000 كجم</strong></div>'+field("ملاحظات / Feedback","feedback")));const form=$("sample-form"),update=()=>{const v=readBags(form,"bags_");const ok=Object.values(v).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(v);$("sample-total-kg").textContent=ok?kg.toFixed(3)+" كجم":"راجع الأعداد";return ok&&kg>0?kg:NaN};["50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),kg=update();if(!Number.isFinite(kg))return toast("أدخل أعداد أكياس صحيحة");try{await rpc("record_distributor_sample_bags",{p_cafe_id:d.get("cafe_id"),p_product_id:d.get("product_id"),p_bags:readBags(form,"bags_"),p_feedback:d.get("feedback")||null});toast("تم تسجيل العينة وخصم "+kg.toFixed(3)+" كجم من مخزون العينات");render()}catch(x){fail(x)}}};
+    $("new-sample").onclick=()=>{const available=bs.filter(b=>b.quantity>0);showForm(formPanel("sample-form","تسجيل عينة لكافيه",selectField("الكافيه","cafe_id",cs.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+selectField("الصنف المتاح بالعينات","product_id",available.map(b=>({value:b.product_id,label:pn[b.product_id]||"صنف"})))+bagFields("bags_")+'<div class="field"><span>إجمالي الوزن</span><strong id="sample-total-kg">0.000 كجم</strong></div>'+field("ملاحظات / Feedback","feedback")));const form=$("sample-form"),update=()=>{const v=readBags(form,"bags_");const ok=Object.values(v).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(v);$("sample-total-kg").textContent=ok?kg.toFixed(3)+" كجم":"راجع الأعداد";return ok&&kg>0?kg:NaN};["25","50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),kg=update();if(!Number.isFinite(kg))return toast("أدخل أعداد أكياس صحيحة");try{await rpc("record_distributor_sample_bags",{p_cafe_id:d.get("cafe_id"),p_product_id:d.get("product_id"),p_bags:readBags(form,"bags_"),p_feedback:d.get("feedback")||null});toast("تم تسجيل العينة وخصم "+kg.toFixed(3)+" كجم من مخزون العينات");render()}catch(x){fail(x)}}};
   }
   async function returnsPage(){
     const [rs,refunds,items,inv,ds,ps,qmov]=await Promise.all([
@@ -442,7 +442,7 @@
     const dn=Object.fromEntries(ds.map(x=>[x.id,x.name])),pn=Object.fromEntries(ps.map(x=>[x.id,x.name]));
     const refundByReturn=Object.fromEntries(refunds.map(x=>[x.return_id,x]));
     const remainingKg=(item)=>{const ms=qmov.filter(m=>m.return_item_id===item.id);const received=ms.filter(m=>m.movement_type==="received").reduce((a,m)=>a+Number(m.quantity),0);const done=ms.filter(m=>["released_to_company","released_to_distributor","damaged"].includes(m.movement_type)).reduce((a,m)=>a+Number(m.quantity),0);return Math.max(0,received-done)};
-    const remainingBags=(item)=>{const ms=qmov.filter(m=>m.return_item_id===item.id),keys=["50","100","200","500","1000"],out={};keys.forEach(k=>{const got=ms.filter(m=>m.movement_type==="received").reduce((a,m)=>a+Number(m.bag_counts?.[k]||0),0),used=ms.filter(m=>["released_to_company","released_to_distributor","damaged"].includes(m.movement_type)).reduce((a,m)=>a+Number(m.bag_counts?.[k]||0),0);out[k]=Math.max(0,got-used)});return out};
+    const remainingBags=(item)=>{const ms=qmov.filter(m=>m.return_item_id===item.id),keys=["25","50","100","200","500","1000"],out={};keys.forEach(k=>{const got=ms.filter(m=>m.movement_type==="received").reduce((a,m)=>a+Number(m.bag_counts?.[k]||0),0),used=ms.filter(m=>["released_to_company","released_to_distributor","damaged"].includes(m.movement_type)).reduce((a,m)=>a+Number(m.bag_counts?.[k]||0),0);out[k]=Math.max(0,got-used)});return out};
 
     const body=rs.map(r=>{const rf=refundByReturn[r.id];return `<tr><td>#${r.return_number}</td><td>${money(items.filter(i=>i.return_id===r.id).reduce((a,i)=>a+Number(i.refund_amount),0))}</td><td>${esc(r.inspection_status)}</td><td>${rf?(rf.delivered_at?"تم التسليم":rf.funded_at?"تم التمويل":"بانتظار التمويل"):"-"}</td><td>${profile.role==="admin"&&!rf?`<button data-allocate="${r.id}" class="secondary">تخصيص مبلغ الرد</button>`: ""}${profile.role==="admin"&&rf&&!rf.funded_at?`<button data-fund="${rf.id}" class="primary">تأكيد التمويل</button>`: ""}${profile.role==="admin"&&rf&&rf.funded_at&&!rf.delivered_at?`<button data-refund-delivered="${rf.id}" class="primary">تأكيد التسليم</button>`:""}</td></tr>`}).join("");
     setContent(section("المرتجعات",'<button id="new-return" class="primary">تسجيل مرتجع</button>')+table(["رقم المرتجع","قيمة الاسترداد","الفحص","حالة رد المبلغ","إجراء"],body)+
@@ -497,7 +497,7 @@
             '<p class="hint">الكمية المتاحة في هذا البند: '+qty(item.quantity)+' كجم</p>')
       ,"تأكيد التسوية"));
       const form=$("return-settlement-form");
-      if(item.bag_counts){const left=remainingBags(item);["50","100","200","500","1000"].forEach(k=>{form.elements["settle_"+k].value=left[k]})}
+      if(item.bag_counts){const left=remainingBags(item);["25","50","100","200","500","1000"].forEach(k=>{form.elements["settle_"+k].value=left[k]})}
       const dispositionSelect=form.elements.disposition;
       const destinationWrap=$("return-destination-wrap");
       const destinationSelect=form.elements.destination_distributor_id;
@@ -513,7 +513,7 @@
         e.preventDefault();const fd=new FormData(form);
         const bags=item.bag_counts?readBags(form,"settle_"):null;
         const amount=bags?bagsKg(bags):Number(fd.get("quantity"));
-        if(!Number.isFinite(amount)||amount<=0||amount>remainingKg(item)|| (bags&&(Object.values(bags).some(n=>!Number.isInteger(n)||n<0)||["50","100","200","500","1000"].some(k=>bags[k]>remainingBags(item)[k]))))return toast("أدخل أعدادًا لا تتجاوز المتبقي في العزل لكل مقاس");
+        if(!Number.isFinite(amount)||amount<=0||amount>remainingKg(item)|| (bags&&(Object.values(bags).some(n=>!Number.isInteger(n)||n<0)||["25","50","100","200","500","1000"].some(k=>bags[k]>remainingBags(item)[k]))))return toast("أدخل أعدادًا لا تتجاوز المتبقي في العزل لكل مقاس");
         const disposition=fd.get("disposition");
         const destination=disposition==="released_to_distributor"?fd.get("destination_distributor_id"):null;
         if(disposition==="released_to_distributor"&&!destination)return toast("اختر الموزع المستلم");
