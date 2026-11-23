@@ -5,7 +5,7 @@
     cfg.SUPABASE_PUBLISHABLE_KEY && !cfg.SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE");
   const $ = (id) => document.getElementById(id);
   let sb, sessionUser, profile, distributor, activeTab = "dashboard";
-  const adminTabs = [["dashboard","الرئيسية"],["people","دليل الأفراد"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["procurement","الموردون والمشتريات"],["adminTools","أدوات الإدارة"],["sampleInventory","مخزون العينات"],["profile","ملفي الشخصي"]];
+  const adminTabs = [["dashboard","الرئيسية"],["people","دليل الأفراد"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["procurement","الموردون والمشتريات"],["adminTools","أدوات الإدارة"],["onlineStock","مخزون الأونلاين"],["sampleInventory","مخزون العينات"],["profile","ملفي الشخصي"]];
   const distTabs = [["dashboard","الرئيسية"],["inventory","مخزوني"],["cafes","الكافيهات"],["orders","الطلبيات"],["samples","العينات"],["finance","حساباتي"],["returns","المرتجعات"],["profile","ملفي الشخصي"]];
   const money = n => new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:2}).format(Number(n||0));
   const qty = n => `${Number(n||0).toLocaleString("en-US",{maximumFractionDigits:3})}`;
@@ -74,6 +74,7 @@
       if(activeTab==="distributors")return distributors();
       if(activeTab==="people")return peopleDirectory();
       if(activeTab==="inventory")return inventory();
+      if(activeTab==="onlineStock")return onlineStock();
       if(activeTab==="cafes")return cafes();
       if(activeTab==="orders")return orders();
       if(activeTab==="samples")return samples();
@@ -257,6 +258,30 @@
     $("people-list").querySelectorAll("[data-edit-person-card]").forEach(btn=>btn.onclick=()=>{const details=$("people-list").querySelector('[data-person="'+btn.dataset.editPersonCard+'"]');if(details){details.click();$("edit-person")?.click();$("person-details").scrollIntoView({behavior:"smooth",block:"start"});}});};
     setContent(section("دليل الأفراد","")+'<div class="panel-card"><div class="form-grid"><label class="field">بحث بالاسم أو البطاقة أو المعرّف أو الهاتف<input id="people-search" type="search" placeholder="اكتب للبحث..."></label><label class="field">نوع الحساب<select id="people-role"><option value="all">كل الحسابات</option><option value="admin">الأدمنز</option><option value="distributor">الموزعون</option></select></label></div><p class="hint">إجمالي الحسابات: '+prepared.length+'</p></div><div id="people-list" class="people-list"></div><div id="person-details"></div>');
     const update=()=>renderList($("people-search").value,$("people-role").value);$("people-search").oninput=update;$("people-role").onchange=update;update();
+  }
+  async function onlineStock(){
+    if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك بعرض مخزون الأونلاين.</div>');
+    setContent(section("مخزون الأونلاين",'<button id="refresh-online-stock" class="secondary">تحديث من الموقع ↻</button>')+
+      '<div class="panel-card"><p class="muted">قراءة فقط من WooCommerce. لا يمكن تعديل أو إضافة أو خصم أي كمية من التطبيق.</p><div id="online-stock-state" class="hint">جارٍ جلب المخزون من الموقع...</div></div>');
+    const btn=$("refresh-online-stock"),state=$("online-stock-state");
+    if(btn)btn.onclick=()=>loadOnlineStock();
+    async function loadOnlineStock(){
+      if(btn){btn.disabled=true;btn.textContent="جارٍ التحديث...";}
+      state.textContent="جارٍ الاتصال بـ WooCommerce...";
+      try{
+        const {data,error}=await sb.functions.invoke("woocommerce-stock-read",{body:{}});
+        if(error)throw error;
+        if(!data||!Array.isArray(data.products))throw new Error(data?.error||"استجابة غير متوقعة من خدمة مخزون الأونلاين.");
+        const products=data.products;
+        const body=products.map(p=>'<tr><td>'+esc(p.name||"-")+'</td><td>'+esc(p.sku||"-")+'</td><td>'+esc(p.size||"-")+'</td><td><strong>'+qty(p.stock_quantity)+'</strong></td><td>'+esc(p.stock_status||"-")+'</td><td>'+esc(p.type||"-")+'</td></tr>').join("");
+        state.innerHTML='<div class="hint">آخر مزامنة: '+esc(new Date(data.fetched_at).toLocaleString("ar-EG"))+' · '+products.length+' صنف</div>'+
+          (products.length?table(["المنتج","SKU","الحجم","الكمية","الحالة","النوع"],body):'<div class="empty">لم يتم العثور على منتجات لها إدارة مخزون مفعّلة في WooCommerce.</div>');
+      }catch(e){
+        console.error(e);
+        state.innerHTML='<div class="error">تعذر قراءة مخزون WooCommerce: '+esc(e.message||"خطأ غير معروف")+'</div><p class="hint">تأكد من إعداد أسرار WooCommerce في Supabase، ومن صلاحية مفاتيح REST API للقراءة.</p>';
+      }finally{if(btn){btn.disabled=false;btn.textContent="تحديث من الموقع ↻";}}
+    }
+    await loadOnlineStock();
   }
   async function inventory(){
     const [bs,ps,ds]=await Promise.all([rows("stock_balances","distributor_id,product_id,quantity,bag_counts"),rows("products"),profile.role==="admin"?rows("distributors"):Promise.resolve([distributor])]);
