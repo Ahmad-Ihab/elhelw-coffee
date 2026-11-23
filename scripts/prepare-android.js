@@ -119,8 +119,15 @@ fs.writeFileSync(path.join(path.dirname(mainPath), "AppUpdaterPlugin.java"), upd
 const manifestPath = path.resolve(__dirname, "..", "android", "app", "src", "main", "AndroidManifest.xml");
 if (!fs.existsSync(manifestPath)) throw new Error("AndroidManifest.xml was not generated.");
 let manifest = fs.readFileSync(manifestPath, "utf8");
-if (!manifest.includes("android.permission.REQUEST_INSTALL_PACKAGES")) {
-  manifest = manifest.replace("<application", '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application');
+const permissions = [
+  "android.permission.REQUEST_INSTALL_PACKAGES",
+  "android.permission.ACCESS_COARSE_LOCATION",
+  "android.permission.ACCESS_FINE_LOCATION"
+];
+for (const permission of permissions) {
+  if (!manifest.includes(permission)) {
+    manifest = manifest.replace("<application", '    <uses-permission android:name="' + permission + '" />\n    <application');
+  }
 }
 fs.writeFileSync(manifestPath, manifest, "utf8");
 // Version metadata is applied by scripts/set-android-version.js in the build workflow.
