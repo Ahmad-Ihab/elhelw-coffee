@@ -5,7 +5,7 @@
     cfg.SUPABASE_PUBLISHABLE_KEY && !cfg.SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE");
   const $ = (id) => document.getElementById(id);
   let sb, sessionUser, profile, distributor, activeTab = "dashboard";
-  const adminTabs = [["dashboard","الرئيسية"],["people","دليل الأفراد"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["procurement","الموردون والمشتريات"],["adminTools","أدوات الإدارة"],["profile","ملفي الشخصي"]];
+  const adminTabs = [["dashboard","الرئيسية"],["people","دليل الأفراد"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["procurement","الموردون والمشتريات"],["adminTools","أدوات الإدارة"],["sampleInventory","مخزون العينات"],["profile","ملفي الشخصي"]];
   const distTabs = [["dashboard","الرئيسية"],["inventory","مخزوني"],["cafes","الكافيهات"],["orders","الطلبيات"],["samples","العينات"],["finance","حساباتي"],["returns","المرتجعات"],["profile","ملفي الشخصي"]];
   const money = n => new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:2}).format(Number(n||0));
   const qty = n => `${Number(n||0).toLocaleString("en-US",{maximumFractionDigits:3})}`;
@@ -77,6 +77,7 @@
       if(activeTab==="cafes")return cafes();
       if(activeTab==="orders")return orders();
       if(activeTab==="samples")return samples();
+      if(activeTab==="sampleInventory")return sampleInventory();
       if(activeTab==="finance")return finance();
       if(activeTab==="returns")return returnsPage();
       if(activeTab==="productionCalculator")return productionCalculator();
@@ -401,14 +402,37 @@
       catch(x){b.disabled=false;fail(x)}
     });
   }
+  async function sampleInventory(){
+    if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح.</div>');
+    const [bs,ps,ds,moves]=await Promise.all([
+      rows("sample_stock_balances"),rows("products"),rows("distributors"),
+      rows("sample_stock_movements")
+    ]);
+    const pn=Object.fromEntries(ps.map(x=>[x.id,x.name])),dn=Object.fromEntries(ds.map(x=>[x.id,x.name]));
+    const company=bs.filter(x=>!x.distributor_id),distributed=bs.filter(x=>x.distributor_id);
+    const stockCard=(b,owner)=>{const counts=b.bag_counts||{};return '<article class="inventory-stock-card"><div class="inventory-stock-heading"><div><span class="inventory-stock-kicker">'+owner+'</span><h3>'+esc(pn[b.product_id]||"")+'</h3></div><div class="inventory-stock-weight"><strong>'+qty(b.quantity)+'</strong><span>كجم</span></div></div>'+bagsTable(counts)+'</article>'};
+    const movementNames={company_in:"إضافة لمخزون الشركة",company_out:"خصم من مخزون الشركة",issued_to_distributor:"تسليم للموزع",distributed_to_cafe:"توزيع على كافيه",returned_to_company:"مرتجع للشركة",adjustment_in:"تسوية بالزيادة",adjustment_out:"تسوية بالخصم"};
+    const movementRows=moves.slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map(m=>'<tr><td>'+new Date(m.created_at).toLocaleString("ar-EG")+'</td><td>'+esc(pn[m.product_id]||"")+'</td><td>'+esc(dn[m.distributor_id]||"مخزون الشركة")+'</td><td>'+esc(movementNames[m.movement_type]||m.movement_type)+'</td><td>'+qty(m.quantity)+' كجم</td><td>'+esc(bagsLabel(m.bag_counts))+'</td><td>'+esc(m.notes||"-")+'</td></tr>').join("");
+    setContent(section("مخزون العينات",'<button id="sample-company-add" class="primary">إضافة لمخزون عينات الشركة</button> <button id="sample-issue" class="secondary">تسليم عينات لموزع</button>')+
+      '<div class="panel-card"><h3>مخزون عينات الشركة</h3><div class="inventory-stock-list">'+(company.map(b=>stockCard(b,"مخزون الشركة")).join("")||'<p class="empty">لا يوجد مخزون عينات مسجل.</p>')+'</div></div>'+
+      '<div class="panel-card"><h3>مخزون العينات مع الموزعين</h3><div class="inventory-stock-list">'+(distributed.map(b=>stockCard(b,"الموزع: "+(dn[b.distributor_id]||"")).join("")||'<p class="empty">لم يتم تسليم عينات لأي موزع.</p>')+'</div></div>'+
+      '<div class="panel-card"><h3>سجل حركات العينات</h3>'+table(["التاريخ","الصنف","الموزع / المصدر","الحركة","الكمية","تفاصيل الأكياس","ملاحظات"],movementRows)+'</div>');
+    const bindBagsForm=(formId,totalId)=>{const form=$(formId);const update=()=>{const bags=readBags(form,"bags_");const valid=Object.values(bags).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(bags);$(totalId).textContent=valid?kg.toFixed(3)+" كجم":"راجع الأعداد";return valid&&kg>0?kg:NaN};["50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));return update};
+    $("sample-company-add").onclick=()=>{showForm(formPanel("sample-company-form","إضافة مخزون عينات للشركة",selectField("الصنف","product_id",ps.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+bagFields("bags_")+'<div class="field"><span>الإجمالي</span><strong id="sample-company-total">0.000 كجم</strong></div>'+field("ملاحظات","notes")+selectField("الحركة","direction",[{value:"in",label:"إضافة للمخزون"},{value:"out",label:"خصم / تسوية"}])));const form=$("sample-company-form"),update=bindBagsForm("sample-company-form","sample-company-total");form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),kg=update();if(!Number.isFinite(kg))return toast("أدخل كميات صحيحة");try{await rpc("admin_adjust_sample_company_stock",{p_product_id:d.get("product_id"),p_bags:readBags(form,"bags_"),p_direction:d.get("direction"),p_notes:d.get("notes")||null});toast("تم تحديث مخزون عينات الشركة");render()}catch(x){fail(x)}}};
+    $("sample-issue").onclick=()=>{showForm(formPanel("sample-issue-form","تسليم عينات لموزع",selectField("الموزع","distributor_id",ds.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+selectField("الصنف","product_id",ps.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+bagFields("bags_")+'<div class="field"><span>الإجمالي</span><strong id="sample-issue-total">0.000 كجم</strong></div>'+field("ملاحظات","notes")));const form=$("sample-issue-form"),update=bindBagsForm("sample-issue-form","sample-issue-total");form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),kg=update();if(!Number.isFinite(kg))return toast("أدخل كميات صحيحة");try{await rpc("admin_issue_sample_stock",{p_distributor_id:d.get("distributor_id"),p_product_id:d.get("product_id"),p_bags:readBags(form,"bags_"),p_notes:d.get("notes")||null});toast("تم تسليم العينات للموزع");render()}catch(x){fail(x)}}};
+  }
   async function samples(){
-    const [ss,cs,ps]=await Promise.all([rows("samples"),rows("cafes"),rows("products")]);
-    const cn=Object.fromEntries(cs.map(x=>[x.id,x.name]));
-    const body=ss.map(s=>`<tr><td>${esc(cn[s.cafe_id]||"")}</td><td>${esc(s.sample_date)}</td><td>${esc(s.feedback||"-")}</td></tr>`).join("");
-    setContent(section("العينات",'<button id="new-sample" class="primary">تسجيل عينة</button>')+table(["الكافيه","التاريخ","التقييم"],body));
-    $("new-sample").onclick=()=>{showForm(formPanel("sample-form","تسجيل عينة",selectField("الكافيه","cafe_id",cs.map(x=>({value:x.id,label:x.name})))+selectField("الصنف","product_id",ps.map(x=>({value:x.id,label:x.name})))+bagFields("bags_")+'<div class="field"><span>إجمالي الوزن</span><strong id="sample-total-kg">0.000 كجم</strong></div>'+field("ملاحظات / Feedback","feedback")));
-      const form=$("sample-form");const update=()=>{const v=readBags(form,"bags_");const ok=Object.values(v).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(v);$("sample-total-kg").textContent=ok?kg.toFixed(3)+" كجم":"راجع الأعداد";return ok?kg:NaN};["50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));
-      form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form);const kg=update();if(!Number.isFinite(kg)||kg<=0)return toast("أدخل أعداد أكياس صحيحة");try{await rpc("record_sample_bags",{p_cafe_id:f.get("cafe_id"),p_product_id:f.get("product_id"),p_bags:readBags(form,"bags_"),p_feedback:f.get("feedback")||null});toast("تم تسجيل العينة وخصم "+kg.toFixed(3)+" كجم");render()}catch(x){fail(x)}}};
+    if(profile.role!=="distributor")return setContent('<div class="panel-card error">هذا القسم متاح للموزعين.</div>');
+    const [bs,ss,cs,ps]=await Promise.all([
+      rows("sample_stock_balances"),rows("samples"),rows("cafes"),rows("products")
+    ]);
+    const cn=Object.fromEntries(cs.map(x=>[x.id,x.name])),pn=Object.fromEntries(ps.map(x=>[x.id,x.name]));
+    const body=ss.slice().sort((a,b)=>new Date(b.sample_date)-new Date(a.sample_date)).map(s=>'<tr><td>'+esc(cn[s.cafe_id]||"")+'</td><td>'+esc(s.sample_date)+'</td><td>'+esc(s.feedback||"-")+'</td><td>'+money(s.marketing_cost)+'</td></tr>').join("");
+    const cards=bs.map(b=>{const counts=b.bag_counts||{};return '<article class="inventory-stock-card"><div class="inventory-stock-heading"><div><span class="inventory-stock-kicker">مخزون العينات</span><h3>'+esc(pn[b.product_id]||"")+'</h3></div><div class="inventory-stock-weight"><strong>'+qty(b.quantity)+'</strong><span>كجم</span></div></div>'+bagsTable(counts)+'</article>'}).join("");
+    setContent(section("مخزون العينات",'<button id="new-sample" class="primary">تسجيل توزيع عينة</button>')+
+      '<div class="inventory-stock-list">'+(cards||'<div class="empty">لا يوجد مخزون عينات معك حاليًا. اطلب من الإدارة تسليم عينات لك.</div>')+'</div>'+
+      '<div class="panel-card"><h3>سجل العينات الموزعة على الكافيهات</h3>'+table(["الكافيه","التاريخ","التقييم / الملاحظات","تكلفة تسويقية"],body)+'</div>');
+    $("new-sample").onclick=()=>{const available=bs.filter(b=>b.quantity>0);showForm(formPanel("sample-form","تسجيل عينة لكافيه",selectField("الكافيه","cafe_id",cs.filter(x=>x.active).map(x=>({value:x.id,label:x.name})))+selectField("الصنف المتاح بالعينات","product_id",available.map(b=>({value:b.product_id,label:pn[b.product_id]||"صنف"})))+bagFields("bags_")+'<div class="field"><span>إجمالي الوزن</span><strong id="sample-total-kg">0.000 كجم</strong></div>'+field("ملاحظات / Feedback","feedback")));const form=$("sample-form"),update=()=>{const v=readBags(form,"bags_");const ok=Object.values(v).every(n=>Number.isInteger(n)&&n>=0);const kg=bagsKg(v);$("sample-total-kg").textContent=ok?kg.toFixed(3)+" كجم":"راجع الأعداد";return ok&&kg>0?kg:NaN};["50","100","200","500","1000"].forEach(k=>form.elements["bags_"+k].addEventListener("input",update));form.onsubmit=async e=>{e.preventDefault();const d=new FormData(form),kg=update();if(!Number.isFinite(kg))return toast("أدخل أعداد أكياس صحيحة");try{await rpc("record_distributor_sample_bags",{p_cafe_id:d.get("cafe_id"),p_product_id:d.get("product_id"),p_bags:readBags(form,"bags_"),p_feedback:d.get("feedback")||null});toast("تم تسجيل العينة وخصم "+kg.toFixed(3)+" كجم من مخزون العينات");render()}catch(x){fail(x)}}};
   }
   async function returnsPage(){
     const [rs,refunds,items,inv,ds,ps,qmov]=await Promise.all([
