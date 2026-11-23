@@ -27,6 +27,8 @@ begin
   delete from public.sales_invoices where true;
   delete from public.order_items where true;
   delete from public.orders where true;
+  delete from public.sample_stock_movements where true;
+  delete from public.sample_stock_balances where true;
   delete from public.sample_items where true;
   delete from public.samples where true;
   delete from public.cafe_payments where true;
