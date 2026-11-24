@@ -73,7 +73,7 @@
   window.elhelwHandleBack=function(){
     if(!profile||!$("tabs")||!$("tabs").getClientRects().length)return false;
     const cancel=document.querySelector("#content form [data-cancel]");if(cancel){cancel.click();return true}
-    if(activeTab==="chat"&&chatPeer){chatPeer=null;communications().catch(fail);return true}if(activeTab==="dashboard")return false;
+    if(activeTab==="chat"&&(chatPeer||groupPeer)){chatPeer=null;groupPeer=null;communications().catch(fail);return true}if(activeTab==="dashboard")return false;
     const back=$("tabs").querySelector("[data-back]");if(back){back.click();return true}
     goScreen("dashboard");return true;
   };
@@ -91,24 +91,31 @@
     const back=$("tabs").querySelector("[data-back]");if(back)back.onclick=()=>{if(group){expandedGroup=group[0];goScreen("group")}else goScreen("dashboard")};
   }
 
-  let chatPeer=null, commChannel=null;
+  let chatPeer=null, commChannel=null, groupPeer=null;
   async function commQuery(q){const {data,error}=await q;if(error)throw error;return data||[]}
   async function communications(){
-    const tab=activeTab, peer=chatPeer, me=sessionUser.id;
+    const tab=activeTab, peer=chatPeer, group=groupPeer, me=sessionUser.id;
     const contacts=await rpc("internal_contacts",{});
     const names=Object.fromEntries(contacts.map(p=>[p.id,p.full_name||p.role]));
     const messages=await commQuery(sb.from(tab==="chat"?"internal_messages":"internal_notices").select("*").order("created_at",{ascending:false}).limit(500));
-    if(activeTab!==tab||chatPeer!==peer)return;
+    if(activeTab!==tab||chatPeer!==peer||groupPeer!==group)return;
     const date=x=>new Date(x).toLocaleString("ar-EG");
     if(tab==="chat"){
+      if(group)return groupConversation(group,contacts);
       if(!peer){
         setContent('<div class="ux-list">'+contacts.map(p=>{const m=messages.find(x=>x.sender===p.id||x.recipient===p.id);const n=messages.filter(x=>x.sender===p.id&&!x.read_at).length;return '<button data-peer="'+p.id+'"><span>◯</span><div style="flex:1;text-align:right"><strong>'+esc(p.full_name||p.role)+'</strong><div class="muted">'+esc(m?.body||"ابدأ محادثة")+'</div></div><span>'+ (n||"‹")+'</span></button>'}).join("")+'</div>');
+        const groups=await commQuery(sb.from("chat_groups").select("*"));
+        if(activeTab!==tab||chatPeer||groupPeer)return;
+        $("content").insertAdjacentHTML("afterbegin",(profile.role==="admin"?'<button id="new-group">+ مجموعة جديدة</button>':'')+'<div class="ux-list">'+groups.map(g=>'<button data-group-chat="'+g.id+'">'+glyph("message")+'<strong>'+esc(g.name)+'</strong><span>‹</span></button>').join("")+'</div>');
+        $("content").querySelectorAll("[data-group-chat]").forEach(b=>b.onclick=()=>{groupPeer=b.dataset.groupChat;communications().catch(fail)});
+        if($("new-group"))$("new-group").onclick=()=>createChatGroup(contacts);
         $("content").querySelectorAll("[data-peer]").forEach(b=>b.onclick=()=>{chatPeer=b.dataset.peer;communications().catch(fail)});return;
       }
       const list=messages.filter(x=>x.sender===peer||x.recipient===peer).reverse();
-      setContent('<div class="panel-card"><button id="chat-back">→ المحادثات</button><h3>'+esc(names[peer])+'</h3><div class="chat-thread">'+list.map(x=>'<div class="chat-bubble '+(x.sender===me?"mine":"")+'">'+esc(x.body)+'<small>'+date(x.created_at)+(x.sender===me?(x.read_at?" · تمت القراءة":" · تم الإرسال"):"")+'</small></div>').join("")+'</div><form id="chat-send"><input name="body" required maxlength="4000" placeholder="اكتب رسالة"><button>إرسال</button></form></div>');
+      setContent('<div class="panel-card"><button id="chat-back">→ المحادثات</button><h3>'+esc(names[peer])+'</h3><div class="chat-thread">'+list.map(x=>'<div class="chat-bubble '+(x.sender===me?"mine":"")+'">'+esc(x.body)+attachmentLink(x)+'<small>'+date(x.created_at)+(x.sender===me?(x.read_at?" · تمت القراءة":" · تم الإرسال"):"")+'</small></div>').join("")+'</div><form id="chat-send"><input name="body" maxlength="4000" placeholder="اكتب رسالة"><input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf"><button>إرسال</button></form></div>');
       $("chat-back").onclick=()=>{chatPeer=null;communications().catch(fail)};
-      $("chat-send").onsubmit=async e=>{e.preventDefault();try{await commQuery(sb.from("internal_messages").insert({recipient:peer,body:e.target.elements.body.value.trim()}));await communications()}catch(e){fail(e)}};
+      $("chat-send").onsubmit=async e=>{e.preventDefault();try{const f=e.target.elements, attachment=await uploadChatFile(f.file.files[0]);const body=f.body.value.trim();if(!body&&!attachment)return;await commQuery(sb.from("internal_messages").insert({recipient:peer,body:body||"مرفق",attachment}));await communications()}catch(e){fail(e)}};
+      bindAttachments();
       if(list.some(x=>x.recipient===me&&!x.read_at))await commQuery(sb.from("internal_messages").update({read_at:new Date().toISOString()}).eq("recipient",me).eq("sender",peer).is("read_at",null));
     }else{
       setContent((profile.role==="admin"?'<div class="panel-card"><h3>إرسال إشعار جديد</h3><form id="notice-send"><select name="target"><option value="all">جميع المستخدمين</option><option value="admin">الأدمنز</option><option value="distributor">الموزعون</option>'+contacts.map(p=>'<option value="'+p.id+'">'+esc(p.full_name||p.role)+'</option>').join("")+'</select><input name="title" required maxlength="200" placeholder="عنوان الإشعار"><textarea name="body" required maxlength="4000" placeholder="محتوى الإشعار"></textarea><button>إرسال</button></form></div>':'')+'<button id="notice-read">تحديد الكل كمقروء</button>'+messages.filter(x=>x.recipient===me).map(x=>'<div class="panel-card"><strong>'+esc(x.title)+(x.read_at?"":" •")+'</strong><p>'+esc(x.body)+'</p><small>'+date(x.created_at)+'</small></div>').join(""));
@@ -116,7 +123,13 @@
       if($("notice-send"))$("notice-send").onsubmit=async e=>{e.preventDefault();try{const f=e.target.elements,t=f.target.value;const recipients=contacts.filter(p=>t==="all"||p.id===t||p.role===t);if(!recipients.length)return toast("لا يوجد مستلمون");await commQuery(sb.from("internal_notices").insert(recipients.map(p=>({recipient:p.id,title:f.title.value.trim(),body:f.body.value.trim()}))));e.target.reset();toast("تم إرسال الإشعار")}catch(e){fail(e)}};
     }
   }
-  function startCommunications(){if(commChannel)return;commChannel=sb.channel("internal-comms").on("postgres_changes",{event:"*",schema:"public",table:"internal_messages"},()=>{if(activeTab==="chat"&&!document.querySelector("#chat-send input:focus"))communications().catch(fail)}).on("postgres_changes",{event:"INSERT",schema:"public",table:"internal_notices"},()=>{if(activeTab==="notifications"&&!document.querySelector("#notice-send :focus"))communications().catch(fail)}).subscribe()}
+  function startCommunications(){if(commChannel)return;commChannel=sb.channel("internal-comms").on("postgres_changes",{event:"*",schema:"public",table:"internal_messages"},()=>{if(activeTab==="chat"&&!document.querySelector("#chat-send input:focus"))communications().catch(fail)}).on("postgres_changes",{event:"INSERT",schema:"public",table:"internal_notices"},()=>{if(activeTab==="notifications"&&!document.querySelector("#notice-send :focus"))communications().catch(fail)}).on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_group_messages"},()=>{if(activeTab==="chat"&&groupPeer&&!document.querySelector("#chat-send :focus"))communications().catch(fail)}).subscribe()}
+
+  function attachmentLink(x){return x.attachment?'<button type="button" class="chat-file" data-file="'+esc(x.attachment)+'">فتح المرفق</button>':""}
+  function bindAttachments(){document.querySelectorAll(".chat-file").forEach(b=>b.onclick=async()=>{try{const {data,error}=await sb.storage.from("chat-files").createSignedUrl(b.dataset.file,60);if(error)throw error;window.open(data.signedUrl,"_blank")}catch(e){fail(e)}})}
+  async function uploadChatFile(file){if(!file)return null;if(file.size>10485760||!["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type))throw Error("المرفق يجب أن يكون صورة أو PDF بحجم لا يتجاوز 10 ميجابايت");const path=sessionUser.id+"/"+crypto.randomUUID()+"."+({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","application/pdf":"pdf"}[file.type]);const {error}=await sb.storage.from("chat-files").upload(path,file,{contentType:file.type});if(error)throw error;return path}
+  function createChatGroup(contacts){setContent('<div class="panel-card"><h3>مجموعة جديدة</h3><form id="group-create"><input name="name" required maxlength="100" placeholder="اسم المجموعة">'+contacts.map(p=>'<label><input type="checkbox" name="members" value="'+p.id+'">'+esc(p.full_name||p.role)+'</label>').join("")+'<button>إنشاء</button></form></div>');$("group-create").onsubmit=async e=>{e.preventDefault();try{const f=e.target;const members=[...f.querySelectorAll("input:checked")].map(x=>x.value);if(!members.length)return toast("اختر المشاركين");const g=await rpc("create_internal_group",{p_name:f.elements.name.value.trim(),p_members:members});groupPeer=g;await communications()}catch(e){fail(e)}}}
+  async function groupConversation(group,contacts){const g=(await commQuery(sb.from("chat_groups").select("*").eq("id",group)))[0];const list=(await commQuery(sb.from("chat_group_messages").select("*").eq("group_id",group).order("created_at",{ascending:false}).limit(200))).reverse();if(activeTab!=="chat"||groupPeer!==group)return;const names=Object.fromEntries(contacts.map(p=>[p.id,p.full_name]));setContent('<div class="panel-card"><button id="chat-back">→ المحادثات</button><h3>'+esc(g?.name)+'</h3><div class="chat-thread">'+list.map(x=>'<div class="chat-bubble '+(x.sender===sessionUser.id?"mine":"")+'"><strong>'+esc(x.sender===sessionUser.id?"أنت":names[x.sender]||"عضو المجموعة")+'</strong><div>'+esc(x.body)+'</div>'+attachmentLink(x)+'<small>'+new Date(x.created_at).toLocaleString("ar-EG")+'</small></div>').join("")+'</div><form id="chat-send"><input name="body" maxlength="4000" placeholder="اكتب رسالة"><input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf"><button>إرسال</button></form></div>');$("chat-back").onclick=()=>{groupPeer=null;communications().catch(fail)};bindAttachments();$("chat-send").onsubmit=async e=>{e.preventDefault();try{const f=e.target.elements,attachment=await uploadChatFile(f.file.files[0]),body=f.body.value.trim();if(!body&&!attachment)return;await commQuery(sb.from("chat_group_messages").insert({group_id:group,body:body||"مرفق",attachment}));await communications()}catch(e){fail(e)}}}
   async function render(){
     startCommunications();
     if(activeTab==='chat'||activeTab==='notifications')return communications().catch(fail);
