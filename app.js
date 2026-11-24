@@ -14,7 +14,11 @@
   function fail(e){console.error(e);toast(e?.message||"حدث خطأ. راجع البيانات وحاول مرة أخرى.");}
   async function rows(table, query){let q=sb.from(table).select(query||"*");let {data,error}=await q; if(error)throw error;return data||[]}
   async function rpc(name,args){let {data,error}=await sb.rpc(name,args);if(error)throw error;return data}
-  function setContent(html){$("content").innerHTML=html}
+  function setContent(html){$("content").innerHTML=html;enhanceTables($("content"))}
+  function enhanceTables(root){root.querySelectorAll(".table-wrap").forEach(w=>{const table=w.querySelector("table");if(!table||w.previousElementSibling?.classList.contains("ux-search"))return;const input=document.createElement("input");input.className="ux-search";input.type="search";input.placeholder="بحث في القائمة…";input.setAttribute("aria-label","بحث في القائمة");w.before(input);input.oninput=()=>{const term=input.value.trim().toLowerCase();table.querySelectorAll("tbody tr").forEach(tr=>tr.hidden=!tr.textContent.toLowerCase().includes(term))}})}
+  function navigateTo(id){const b=$("tabs").querySelector('[data-tab="'+id+'"]');if(b)b.click();else{const groups=profile.role==="admin"?groupsAdmin:groupsDist;const g=groups.find(x=>x[2].includes(id));if(g){$("tabs").querySelectorAll("[data-group]").forEach(x=>{if(x.dataset.group===g[0])x.click()});$("tabs").querySelector('[data-tab="'+id+'"]')?.click()}}}
+  function chartBars(items){const max=Math.max(1,...items.map(x=>x[1]));return '<div class="ux-chart">'+items.map(([label,n])=>'<div class="ux-bar-row"><span>'+esc(label)+'</span><div class="ux-track"><div style="width:'+Math.max(0,100*n/max)+'%"></div></div><strong>'+qty(n)+'</strong></div>').join("")+'</div>'}
+
   const bagFields = p => [["25","25 جرام"],["50","50 جرام"],["100","100 جرام"],["200","200 جرام"],["500","500 جرام"],["1000","1 كيلو"]].map(([k,l])=>field("عدد أكياس "+l,p+k,"number",'min="0" step="1" value="0" required')).join("");
   const readBags = (f,p) => Object.fromEntries(["25","50","100","200","500","1000"].map(k=>[k,Number(f.elements[p+k].value||0)]));
   const bagsKg = b => (25*b["25"]+50*b["50"]+100*b["100"]+200*b["200"]+500*b["500"]+1000*b["1000"])/1000;
@@ -132,12 +136,13 @@
       return sum+(hasBagCounts?bagsKg(counts):Number(b.quantity||0));
     },0);
     const pending=orders.filter(o=>!["delivered","cancelled"].includes(o.status)).length;
-    setContent(`<div class="cards">
+    const delivered=orders.filter(o=>o.status==="delivered").length,cancelled=orders.filter(o=>o.status==="cancelled").length;
+    setContent(`<div class="cards ux-stats">
       <div class="stat"><span>الأصناف النشطة</span><strong>${prods.filter(x=>x.active).length}</strong></div>
       <div class="stat"><span>الكافيهات</span><strong>${cafes.length}</strong></div>
       <div class="stat"><span>الطلبيات المفتوحة</span><strong>${pending}</strong></div>
       <div class="stat"><span>إجمالي المخزون الظاهر لك</span><strong>${qty(total)} كجم</strong></div>
-      </div><div class="panel-card"><h2>ابدأ من هنا</h2><p class="muted">سجل الاستلام، أضف الكافيهات، ثم أنشئ الطلبيات وسجل التسليم والتحصيل.</p><p class="hint">يتم عرض البيانات وفق صلاحيات حسابك. عمليات المخزون والمالية الحساسة تتم من خلال وظائف قاعدة البيانات.</p></div>`);
+      </div><div class="panel-card ux-report"><h2>حالة الطلبيات</h2>${chartBars([["مفتوحة",pending],["تم التسليم",delivered],["ملغاة",cancelled]])}</div><div class="panel-card ux-report"><h2>وصول سريع</h2><div class="ux-actions"><button data-quick="orders">الطلبيات</button><button data-quick="inventory">المخزون</button><button data-quick="finance">الحسابات</button></div></div>`);$("content").querySelectorAll("[data-quick]").forEach(b=>b.onclick=()=>navigateTo(b.dataset.quick));
   }
   async function products(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
@@ -865,7 +870,7 @@
     const result=await updater.installUpdate();
     if(result.permissionRequired)window.__ELHELW_INSTALL_PERMISSION_PENDING=true;
   }
-  checkForAppUpdate();
+  checkForAppUpdate(true);
   $("login-form").onsubmit=async e=>{e.preventDefault();$("login-error").textContent="";let {error}=await sb.auth.signInWithPassword({email:$("email").value,password:$("password").value});if(error){$("login-error").textContent=error.message;return}location.reload()};
   boot().catch(fail);
 })();
