@@ -94,3 +94,5 @@ body:has(#chat-screen) #ux-bottom{display:none}
 .ux-list button:has(.chat-avatar){padding:12px;gap:12px}
 .ux-list button:has(.chat-avatar) .muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
 @media(prefers-color-scheme:dark){.chat-screen .chat-thread{background:#201b17}.chat-screen .chat-bubble{background:#352d27;color:#f3e9df}.chat-screen .chat-bubble.mine{background:#50382a}}
+
+#chat-person-dialog{width:min(90vw,420px);max-height:85dvh;overflow:auto;border:1px solid var(--line);border-radius:20px;background:var(--paper);color:var(--ink);padding:20px;box-sizing:border-box}#chat-person-dialog::backdrop{background:#0008}.chat-person-top{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px}.chat-person-top button{position:absolute;inset-inline-end:0;top:0;padding:4px 12px;font-size:22px}.chat-person-top img,.chat-person-top .chat-avatar{width:110px;height:110px;border-radius:50%;object-fit:cover}.chat-person-field{padding:12px 0;border-top:1px solid var(--line);display:grid;gap:5px;overflow-wrap:anywhere}.chat-person-field small{color:var(--muted)}.chat-header [role=button]{cursor:pointer}
