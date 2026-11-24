@@ -10,7 +10,7 @@
   const rows = async (table, select="*") => { const {data,error}=await sb.from(table).select(select); if(error) throw error; return data||[]; };
   const save = async (table,payload) => { const {error}=await sb.from(table).insert(payload); if(error) throw error; };
   const tabs = () => '<div class="tabs" style="margin:12px 0;flex-wrap:wrap">'+[
-    ["suppliers","الموردون"],["materials","الخامات والأسعار"],["orders","طلبيات الموردين"],["stock","مخزون الخامات"],["recipes","توليفات الإنتاج"],["packaging","مخزون التعبئة والتغليف"]
+    ["suppliers","الموردون"],["materials","الخامات والأسعار"],["orders","طلبيات الموردين"],["stock","مخزون الخامات"],["recipes","توليفات الإنتاج"],["packaging","مخزون التعبئة والتغليف"],["roasting","التحميص"]
   ].map(([id,label])=>'<button class="tab '+(view===id?'active':'')+'" data-view="'+id+'">'+label+'</button>').join("")+'</div>';
   const panel = (title,body,action="") => '<section class="panel-card">'+
     '<div class="section-head"><h2>'+title+'</h2>'+action+'</div>'+body+'</section>';
@@ -22,7 +22,7 @@
   async function load(){
     [suppliers,materials,prices,orders,balances]=await Promise.all([
       rows("suppliers","id,name,contact_name,phone,notes,active,created_at"),
-      rows("raw_materials","id,name,unit,active,notes"),
+      rows("raw_materials",view==="roasting"?"id,name,unit,active,notes,factory_kind,origin,bean_type,screen_size":"id,name,unit,active,notes"),
       rows("supplier_material_prices","id,supplier_id,raw_material_id,unit_price,updated_at"),
       rows("supplier_purchase_orders","id,order_number,supplier_id,status,order_date,expected_date,supplier_invoice_number,notes,created_at"),
       rows("raw_material_stock_balances","raw_material_id,quantity_kg")
@@ -175,10 +175,39 @@
       catch(x){showError(x)}finally{pending=false;b.disabled=false;}
     };
   }
+
+  async function roastingPage(){
+    const [stock,batches]=await Promise.all([rows("roasted_stock"),rows("roasting_batches")]);
+    if(view!=="roasting")return;
+    const name=id=>esc(materials.find(m=>m.id===id)?.name||id);
+    const table=stock.map(i=>'<tr><td>'+name(i.raw_material_id)+'</td><td>'+esc(i.roast_degree)+'</td><td>'+num(i.quantity_kg)+'</td><td>'+money(i.average_cost)+'</td></tr>').join("");
+    const history=batches.sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(b=>'<tr><td>'+esc(new Date(b.created_at).toLocaleString("ar-EG"))+'</td><td>'+name(b.raw_material_id)+'</td><td>'+esc(b.roast_degree)+'</td><td>'+num(b.input_kg)+'</td><td>'+num(b.output_kg)+'</td><td>'+num(b.loss_percent)+'%</td><td>'+money((Number(b.input_kg)*Number(b.green_unit_cost)+Number(b.processing_cost))/Number(b.output_kg))+'</td></tr>').join("");
+    set(panel("مخزون البن المحمص",'<div class="table-wrap"><table><thead><tr><th>الخامة</th><th>التحميص</th><th>كجم</th><th>تكلفة الكيلو</th></tr></thead><tbody>'+(table||'<tr><td colspan="4">لا يوجد مخزون محمص</td></tr>')+'</tbody></table></div>',btn("new-roast","تسجيل تحميص")+btn("classify-material","تصنيف خامة"))+panel("سجل التحميص",'<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الخامة</th><th>الدرجة</th><th>قبل</th><th>بعد</th><th>الفاقد</th><th>تكلفة الكيلو</th></tr></thead><tbody>'+history+'</tbody></table></div>'));
+    q("new-roast").onclick=()=>roastingForm();
+    q("classify-material").onclick=()=>classifyMaterial();
+  }
+  function classifyMaterial(){
+    if(q("classify-form"))return;
+    root.insertAdjacentHTML("afterbegin",'<form id="classify-form" class="form-panel"><h3>تصنيف الخامة</h3><div class="form-grid">'+select("الخامة","material",materials.map(m=>({value:m.id,label:m.name})))+select("التصنيف","kind",[{value:"green_coffee",label:"بن أخضر"},{value:"additive",label:"إضافات"}])+input("بلد المنشأ","origin")+input("نوع الحبوب","bean_type")+input("حجم الحبوب","screen_size")+'</div><button class="primary">حفظ</button><button type="button" class="secondary" data-close>إلغاء</button></form>');
+    const f=q("classify-form"),e=f.elements;
+    e.material.onchange=()=>{const m=materials.find(x=>x.id===e.material.value);for(const k of ["origin","bean_type","screen_size"])e[k].value=m?.[k]||"";e.kind.value=m?.factory_kind||"";};
+    f.querySelector("[data-close]").onclick=()=>f.remove();
+    f.onsubmit=async ev=>{ev.preventDefault();const b=f.querySelector("button.primary");b.disabled=true;try{const {error}=await sb.from("raw_materials").update({factory_kind:e.kind.value,origin:e.origin.value.trim()||null,bean_type:e.bean_type.value.trim()||null,screen_size:e.screen_size.value.trim()||null}).eq("id",e.material.value);if(error)throw error;notify("تم حفظ التصنيف");await render()}catch(x){showError(x)}finally{b.disabled=false}};
+  }
+  function roastingForm(){
+    if(q("roast-form"))return;
+    const green=materials.filter(m=>m.active&&m.factory_kind==="green_coffee");
+    if(!green.length)return notify("صنف خامة بن أخضر أولاً");
+    root.insertAdjacentHTML("afterbegin",'<form id="roast-form" class="form-panel"><h3>تسجيل دفعة تحميص</h3><div class="form-grid">'+select("البن الأخضر","material",green.map(m=>({value:m.id,label:m.name+" — "+num(balances.find(b=>b.raw_material_id===m.id)?.quantity_kg)+" كجم"})))+input("درجة التحميص","degree","text",'required maxlength="80"')+input("الوزن قبل التحميص كجم","before","number",'required min="0.001" step="0.001"')+input("الوزن بعد التحميص كجم","after","number",'required min="0.001" step="0.001"')+input("تكلفة كيلو الخام","cost","number",'required min="0" step="0.0001"')+input("إجمالي تكلفة التحميص","processing","number",'required min="0" step="0.01" value="0"')+input("ملاحظات","notes")+'</div><p id="roast-preview"></p><button class="primary">تنفيذ التحميص</button><button type="button" class="secondary" data-close>إلغاء</button></form>');
+    const f=q("roast-form"),e=f.elements;let pending=false,id=null,sig=null;
+    f.oninput=()=>{const a=Number(e.before.value),b=Number(e.after.value);q("roast-preview").textContent=a>0&&b>0&&b<=a?"الفاقد: "+num(100*(a-b)/a)+"% — تكلفة الكيلو: "+money((a*Number(e.cost.value)+Number(e.processing.value))/b):""};
+    f.querySelector("[data-close]").onclick=()=>{if(!pending)f.remove()};
+    f.onsubmit=async ev=>{ev.preventDefault();if(pending)return;const p={p_material:e.material.value,p_degree:e.degree.value.trim(),p_input:Number(e.before.value),p_output:Number(e.after.value),p_green_cost:Number(e.cost.value),p_processing_cost:Number(e.processing.value),p_notes:e.notes.value||null};if(p.p_output>p.p_input)return notify("الناتج لا يمكن أن يتجاوز وزن الخام");const next=JSON.stringify(p);if(next!==sig){id=crypto.randomUUID();sig=next}pending=true;const b=f.querySelector("button.primary");b.disabled=true;try{const {error}=await sb.rpc("record_roasting_batch",{p_id:id,...p});if(error)throw error;notify("تم تسجيل التحميص");await render()}catch(x){showError(x)}finally{pending=false;b.disabled=false}};
+  }
   async function render(){
     root.innerHTML='<div class="panel-card">جارٍ تحميل بيانات الموردين والخامات...</div>';
     await load();
-    if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else if(view==="recipes")recipesPage();else if(view==="packaging")await packagingPage();else stockPage();
+    if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else if(view==="recipes")recipesPage();else if(view==="packaging")await packagingPage();else if(view==="roasting")await roastingPage();else stockPage();
   }
   window.renderElhelwProcurement=async function(target,client){
     root=target;sb=client;view="suppliers";
