@@ -71,7 +71,7 @@
   let expandedGroup="";
   function goScreen(id){if(!profileComplete()&&id!=="profile"&&!(profile.role==="admin"&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();render();window.scrollTo(0,0)}
   window.elhelwHandleBack=function(){
-    if(!profile||!document.getElementById("workspace")||document.getElementById("workspace").classList.contains("hidden"))return false;
+    if(!profile||!$("tabs")||!$("tabs").getClientRects().length)return false;
     const cancel=document.querySelector("#content form [data-cancel]");if(cancel){cancel.click();return true}
     if(activeTab==="dashboard")return false;
     const back=$("tabs").querySelector("[data-back]");if(back){back.click();return true}
@@ -842,43 +842,14 @@
       if(!apk||!latestCode||latestCode<=Number(current.versionCode))return;
       const version=String(release.tag_name||"").replace(/^v/i,"");
       if(!confirm("يتوفر تحديث جديد لتطبيق Elhelw Distribution\nالإصدار الحالي: "+current.versionName+"\nالإصدار الجديد: "+version+"\n\nهل تريد تنزيل التحديث الآن؟"))return;
-      toast("جارٍ تنزيل التحديث...");
-      await nativeUpdater.downloadUpdate({url:apk.browser_download_url,filename:"elhelw-distribution-"+version+".apk"});
-      let status="running";
-      const started=Date.now();
-      while(status==="running"||status==="paused"){
-        await new Promise(resolve=>setTimeout(resolve,1500));
-        if(Date.now()-started>20*60*1000)throw new Error("استغرق التنزيل وقتاً طويلاً. يمكنك متابعة التنزيل من إشعارات الهاتف.");
-        const state=await nativeUpdater.getDownloadStatus();
-        status=state.status;
-        if(status==="failed")throw new Error("فشل تنزيل التحديث. كود الخطأ: "+state.reason);
-      }
-      if(status!=="success")return;
-      toast("اكتمل تنزيل التحديث.");
-      if(confirm("تم تنزيل الإصدار "+version+" بنجاح. هل تريد تثبيته الآن؟")){
-        const result=await nativeUpdater.installUpdate();
-        if(result.permissionRequired){
-          window.__ELHELW_INSTALL_PERMISSION_PENDING=true;
-          toast("اسمح بالتثبيت من هذا المصدر في إعدادات أندرويد، ثم ارجع للتطبيق.");
-        }
-      }
+      await nativeUpdater.openUpdate({url:apk.browser_download_url});
+      toast("افتح ملف التحديث بعد تنزيله من المتصفح.");
     }catch(error){
       console.warn("App update check:",error);
       if(error?.message)toast(error.message);
     }finally{
       window.__ELHELW_UPDATE_CHECKING=false;
     }
-  }
-  document.addEventListener("visibilitychange",async()=>{
-    if(document.visibilityState!=="visible"||!window.__ELHELW_INSTALL_PERMISSION_PENDING)return;
-    window.__ELHELW_INSTALL_PERMISSION_PENDING=false;
-    try{await nativeUpdaterInstallPending()}catch(error){console.warn(error);fail(error)}
-  });
-  async function nativeUpdaterInstallPending(){
-    const updater=window.Capacitor?.Plugins?.AppUpdater;
-    if(!updater)return;
-    const result=await updater.installUpdate();
-    if(result.permissionRequired)window.__ELHELW_INSTALL_PERMISSION_PENDING=true;
   }
   checkForAppUpdate(true);
   $("login-form").onsubmit=async e=>{e.preventDefault();$("login-error").textContent="";let {error}=await sb.auth.signInWithPassword({email:$("email").value,password:$("password").value});if(error){$("login-error").textContent=error.message;return}location.reload()};
