@@ -1,0 +1,4 @@
+create function public.chat_contact_avatars() returns table(id uuid,avatar_path text) language sql stable security definer set search_path='' as $$select p.id,p.avatar_path from public.profiles p where auth.uid() is not null and (p.id=auth.uid() or public.is_admin() or p.role='admin')$$;
+revoke all on function public.chat_contact_avatars() from public,anon;
+grant execute on function public.chat_contact_avatars() to authenticated;
+create policy chat_admin_avatar_read on storage.objects for select to authenticated using(bucket_id='profile-avatars' and exists(select 1 from public.chat_contact_avatars() p where p.avatar_path=storage.objects.name));
