@@ -10,7 +10,7 @@
   const rows = async (table, select="*") => { const {data,error}=await sb.from(table).select(select); if(error) throw error; return data||[]; };
   const save = async (table,payload) => { const {error}=await sb.from(table).insert(payload); if(error) throw error; };
   const tabs = () => '<div class="tabs" style="margin:12px 0;flex-wrap:wrap">'+[
-    ["suppliers","الموردون"],["materials","الخامات والأسعار"],["orders","طلبيات الموردين"],["stock","مخزون الخامات"],["recipes","توليفات الإنتاج"],["packaging","مخزون التعبئة والتغليف"],["roasting","التحميص"]
+    ["suppliers","الموردون"],["materials","الخامات والأسعار"],["orders","طلبيات الموردين"],["stock","مخزون الخامات"],["recipes","توليفات الإنتاج"],["packaging","مخزون التعبئة والتغليف"],["roasting","التحميص"],["factory","تصنيع وتعبئة"]
   ].map(([id,label])=>'<button class="tab '+(view===id?'active':'')+'" data-view="'+id+'">'+label+'</button>').join("")+'</div>';
   const panel = (title,body,action="") => '<section class="panel-card">'+
     '<div class="section-head"><h2>'+title+'</h2>'+action+'</div>'+body+'</section>';
@@ -22,7 +22,7 @@
   async function load(){
     [suppliers,materials,prices,orders,balances]=await Promise.all([
       rows("suppliers","id,name,contact_name,phone,notes,active,created_at"),
-      rows("raw_materials",view==="roasting"?"id,name,unit,active,notes,factory_kind,origin,bean_type,screen_size":"id,name,unit,active,notes"),
+      rows("raw_materials",["roasting","factory"].includes(view)?"id,name,unit,active,notes,factory_kind,origin,bean_type,screen_size":"id,name,unit,active,notes"),
       rows("supplier_material_prices","id,supplier_id,raw_material_id,unit_price,updated_at"),
       rows("supplier_purchase_orders","id,order_number,supplier_id,status,order_date,expected_date,supplier_invoice_number,notes,created_at"),
       rows("raw_material_stock_balances","raw_material_id,quantity_kg")
@@ -204,10 +204,42 @@
     f.querySelector("[data-close]").onclick=()=>{if(!pending)f.remove()};
     f.onsubmit=async ev=>{ev.preventDefault();if(pending)return;const p={p_material:e.material.value,p_degree:e.degree.value.trim(),p_input:Number(e.before.value),p_output:Number(e.after.value),p_green_cost:Number(e.cost.value),p_processing_cost:Number(e.processing.value),p_notes:e.notes.value||null};if(p.p_output>p.p_input)return notify("الناتج لا يمكن أن يتجاوز وزن الخام");const next=JSON.stringify(p);if(next!==sig){id=crypto.randomUUID();sig=next}pending=true;const b=f.querySelector("button.primary");b.disabled=true;try{const {error}=await sb.rpc("record_roasting_batch",{p_id:id,...p});if(error)throw error;notify("تم تسجيل التحميص");await render()}catch(x){showError(x)}finally{pending=false;b.disabled=false}};
   }
+
+  async function factoryPage(){
+    const [versions,stock,roasted,products,mappings,batches,packs]=await Promise.all(["factory_blend_versions","factory_blend_stock","roasted_stock","products","factory_product_mapping","factory_blend_batches","factory_packing_batches"].map(t=>rows(t)));
+    if(view!=="factory")return;
+    const vname=v=> (recipes.find(r=>r.id===v.recipe_id)?.name||v.recipe_id)+" / v"+v.version;
+    const opts=versions.map(v=>({value:v.id,label:vname(v)}));
+    const table=versions.map(v=>{const b=stock.find(x=>x.version_id===v.id),m=mappings.find(x=>x.version_id===v.id);return '<tr><td>'+esc(vname(v))+'</td><td>'+num(b?.quantity_kg)+'</td><td>'+money(b?.average_cost)+'</td><td>'+esc(products.find(p=>p.id===m?.product_id)?.name||"غير مربوط")+'</td></tr>'}).join("");
+    set(panel("تصنيع وتعبئة التوليفات",'<div class="table-wrap"><table><thead><tr><th>التوليفة</th><th>كجم</th><th>تكلفة الكيلو</th><th>المنتج النهائي</th></tr></thead><tbody>'+table+'</tbody></table></div>',btn("factory-recipe","وصفة جديدة")+btn("factory-map","ربط المنتج")+btn("factory-run","تنفيذ إنتاج"))+panel("سجل التصنيع والتعبئة",'<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>العملية</th><th>الوزن</th><th>التكلفة</th></tr></thead><tbody>'+[...batches.map(b=>({...b,kind:"تصنيع",kg:b.output_kg})),...packs.map(b=>({...b,kind:"تعبئة",kg:b.quantity_kg}))].sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(b=>'<tr><td>'+esc(new Date(b.created_at).toLocaleString("ar-EG"))+'</td><td>'+b.kind+'</td><td>'+num(b.kg)+'</td><td>'+money(b.total_cost)+'</td></tr>').join("")+'</tbody></table></div>'));
+    function form(title,body,submit){
+      if(q("factory-form"))return;
+      root.insertAdjacentHTML("afterbegin",'<form id="factory-form" class="form-panel"><h3>'+title+'</h3><div class="form-grid">'+body+'</div><button class="primary">حفظ</button><button type="button" class="secondary" data-close>إلغاء</button></form>');
+      const f=q("factory-form");let busy=false;const ids={};f.querySelector("[data-close]").onclick=()=>{if(!busy)f.remove()};
+      f.onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;const b=f.querySelector("button.primary");b.disabled=true;try{await submit(f,ids);notify("تم الحفظ");await render()}catch(x){showError(x)}finally{busy=false;b.disabled=false}};return f;
+    }
+    const rpc=async(name,args)=>{const {error}=await sb.rpc(name,args);if(error)throw error};
+    q("factory-recipe").onclick=()=>{
+      const components=[...roasted.map(r=>({value:JSON.stringify({material_id:r.raw_material_id,kind:"roasted",roast_degree:r.roast_degree}),label:(materials.find(m=>m.id===r.raw_material_id)?.name||"")+" / "+r.roast_degree})),...materials.filter(m=>m.active&&m.factory_kind==="additive").map(m=>({value:JSON.stringify({material_id:m.id,kind:"additive"}),label:m.name}))];
+      const f=form("وصفة تصنيع جديدة",select("التوليفة","recipe",recipes.filter(r=>r.active).map(r=>({value:r.id,label:r.name})))+'<div id="factory-lines"></div><button type="button" id="factory-add">إضافة مكون</button>',async f=>{const cs=[...f.querySelectorAll("[data-component]")].map(w=>({...JSON.parse(w.querySelector("select").value),ratio:Number(w.querySelector("input").value)/100}));await rpc("save_factory_blend_version",{p_recipe:f.elements.recipe.value,p_components:cs})});
+      if(!f)return;const add=()=>{const w=document.createElement("div");w.dataset.component="1";w.innerHTML=select("المكون","component",components)+input("النسبة %","ratio","number",'required min="0.001" max="100" step="0.001"')+'<button type="button">حذف</button>';w.querySelector("button").onclick=()=>w.remove();q("factory-lines").append(w)};q("factory-add").onclick=add;add();
+    };
+    q("factory-map").onclick=()=>form("ربط المنتج النهائي",select("الوصفة","version",opts)+select("المنتج","product",products.filter(p=>p.active).map(p=>({value:p.id,label:p.name})))+select("نوع الاستيكر","label",["بدون","سادة فاتح","سادة وسط","سادة غامق","محوج فاتح","محوج وسط","محوج غامق","فرنساوي","فرنساوي بندق"].map((label,i)=>({value:String(i),label}))),async f=>rpc("set_factory_product_mapping",{p_version:f.elements.version.value,p_product:f.elements.product.value,p_label:Number(f.elements.label.value)||null}));
+    q("factory-run").onclick=()=>{
+      const f=form("عملية إنتاج",select("الوصفة","version",opts)+select("العملية","mode",[{value:"blend",label:"تصنيع وتخزين"},{value:"pack",label:"تعبئة من المخزون"},{value:"direct",label:"تصنيع وتعبئة مباشرة"}])+input("وزن المكونات كجم","before","number",'min="0.001" step="0.001"')+input("وزن الناتج كجم","after","number",'min="0.001" step="0.001"')+[50,100,200,500,1000].map(w=>input("عدد أكياس "+w+" جم","bag"+w,"number",'min="0" step="1" value="0"')).join("")+input("تكلفة التصنيع","blendcost","number",'min="0" step="0.01" value="0"')+input("تكلفة التعبئة","packcost","number",'min="0" step="0.01" value="0"')+'<div id="factory-additive-costs"></div>',async(f,ids)=>{
+        const e=f.elements,mode=e.mode.value,v=e.version.value,bags=Object.fromEntries([50,100,200,500,1000].map(w=>[String(w),Number(e["bag"+w].value)])),costs=Object.fromEntries([...f.querySelectorAll("[data-additive]")].map(x=>[x.dataset.additive,Number(x.value)]));
+        const signature=JSON.stringify([mode,v,bags,costs,e.before.value,e.after.value,e.blendcost.value,e.packcost.value]);if(ids.signature!==signature){ids.signature=signature;ids.blend=crypto.randomUUID();ids.pack=crypto.randomUUID()}
+        if(mode==="blend")await rpc("record_factory_blend",{p_id:ids.blend,p_version:v,p_input:Number(e.before.value),p_output:Number(e.after.value),p_additive_costs:costs,p_processing_cost:Number(e.blendcost.value)});
+        else if(mode==="pack")await rpc("record_factory_packing",{p_id:ids.pack,p_version:v,p_bags:bags,p_processing_cost:Number(e.packcost.value)});
+        else await rpc("record_factory_direct_pack",{p_blend_id:ids.blend,p_pack_id:ids.pack,p_version:v,p_input:Number(e.before.value),p_bags:bags,p_additive_costs:costs,p_blend_cost:Number(e.blendcost.value),p_pack_cost:Number(e.packcost.value)});
+      });
+      if(!f)return;const e=f.elements;const sync=()=>{const mode=e.mode.value;for(const k of ["before","blendcost"])e[k].disabled=mode==="pack";e.before.required=mode!=="pack";e.after.disabled=mode!=="blend";e.after.required=mode==="blend";for(const w of [50,100,200,500,1000])e["bag"+w].disabled=mode==="blend";e.packcost.disabled=mode==="blend";const box=q("factory-additive-costs");box.innerHTML="";if(mode!=="pack")for(const c of (versions.find(v=>v.id===e.version.value)?.components||[]).filter(c=>c.kind==="additive")){const l=document.createElement("label");l.className="field";l.textContent="تكلفة كيلو "+(materials.find(m=>m.id===c.material_id)?.name||"الإضافة");const i=document.createElement("input");i.type="number";i.min="0";i.step="0.0001";i.required=true;i.dataset.additive=c.material_id;l.append(i);box.append(l)}};e.mode.onchange=sync;e.version.onchange=sync;sync();
+    };
+  }
   async function render(){
     root.innerHTML='<div class="panel-card">جارٍ تحميل بيانات الموردين والخامات...</div>';
     await load();
-    if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else if(view==="recipes")recipesPage();else if(view==="packaging")await packagingPage();else if(view==="roasting")await roastingPage();else stockPage();
+    if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else if(view==="recipes")recipesPage();else if(view==="packaging")await packagingPage();else if(view==="roasting")await roastingPage();else if(view==="factory")await factoryPage();else stockPage();
   }
   window.renderElhelwProcurement=async function(target,client){
     root=target;sb=client;view="suppliers";
