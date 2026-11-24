@@ -43,3 +43,6 @@ jobs:
         run: |
           for f in packaging roasting blends packing; do psql -v ON_ERROR_STOP=1 -f "sql/factory_$f.sql"; done
           psql -v ON_ERROR_STOP=1 -c "do \$\$ begin if (select count(*) from public.packaging_items) <> 21 then raise exception 'Packaging seed mismatch'; end if; end \$\$;"
+
+      - name: Test factory operations
+        run: psql -v ON_ERROR_STOP=1 -f sql/tests/factory_operations.sql
