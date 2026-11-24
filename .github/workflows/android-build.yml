@@ -5,26 +5,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "app.js"
-      - "index.html"
-      - "styles.css"
-      - "production-calculator.js"
-      - "production-calculator/**"
-      - "sw.js"
-      - "production-calculator.css"
-      - "config.js"
-      - "assets/**"
-      - "package.json"
-      - "package-lock.json"
-      - "capacitor.config.json"
-      - "manifest.webmanifest"
-      - "scripts/**"
       - "android-version.json"
       - ".github/workflows/android-build.yml"
 
 concurrency:
   group: android-release
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
