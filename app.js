@@ -73,24 +73,53 @@
   window.elhelwHandleBack=function(){
     if(!profile||!$("tabs")||!$("tabs").getClientRects().length)return false;
     const cancel=document.querySelector("#content form [data-cancel]");if(cancel){cancel.click();return true}
-    if(activeTab==="dashboard")return false;
+    if(activeTab==="chat"&&chatPeer){chatPeer=null;communications().catch(fail);return true}if(activeTab==="dashboard")return false;
     const back=$("tabs").querySelector("[data-back]");if(back){back.click();return true}
     goScreen("dashboard");return true;
   };
   function renderTabs(){
     const admin=profile.role==="admin",tabs=admin?adminTabs:distTabs,groups=admin?groupsAdmin:groupsDist;
-    const labels=Object.fromEntries([...tabs,["roasting","التحميص"],["recipes","التوليفات"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"],["materials","الخامات والأسعار"],["supplierOrders","طلبيات الموردين"],["reports","التقارير"]]);
+    const labels=Object.fromEntries([...tabs,["roasting","التحميص"],["recipes","التوليفات"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"],["materials","الخامات والأسعار"],["supplierOrders","طلبيات الموردين"],["reports","التقارير"],["chat","المحادثات"],["notifications","الإشعارات"]]);
     const group=groups.find(g=>g[2].includes(activeTab)), selected=groups.find(g=>g[0]===expandedGroup);
     const home=activeTab==="dashboard", menu=activeTab==="group";
     document.querySelector(".welcome")?.classList.toggle("hidden",!home);
     $("tabs").innerHTML=home?'<div class="ux-grid ux-large">'+groups.map(([name,k])=>'<button class="ux-tile" data-group="'+name+'">'+glyph(k)+'<strong>'+name+'</strong></button>').join("")+'</div>':menu&&selected?'<div class="ux-screen-head"><button data-tab="dashboard">→</button><h2>'+selected[0]+'</h2></div><div class="ux-list">'+selected[2].map(id=>'<button data-tab="'+id+'">'+glyph(selected[1])+'<strong>'+labels[id]+'</strong><span>‹</span></button>').join("")+'</div>':'<div class="ux-screen-head"><button data-back>→</button><h2>'+ (labels[activeTab]||"")+'</h2></div>';
     let nav=document.getElementById("ux-bottom");if(!nav){nav=document.createElement("nav");nav.id="ux-bottom";document.body.append(nav)}
-    nav.innerHTML=[["dashboard","home","الرئيسية"],["reports","chart","التقارير"],["profile","user","حسابي"]].map(([id,k,l])=>'<button data-tab="'+id+'" class="'+(activeTab===id?'selected':'')+'">'+glyph(k)+'<span>'+l+'</span></button>').join("");
+    nav.innerHTML=[["dashboard","home","الرئيسية"],["reports","chart","التقارير"],["chat","message","المحادثات"],["notifications","bell","الإشعارات"],["profile","user","حسابي"]].map(([id,k,l])=>'<button data-tab="'+id+'" class="'+(activeTab===id?'selected':'')+'">'+glyph(k)+'<span>'+l+'</span></button>').join("");
     [$("tabs"),nav].forEach(el=>el.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>goScreen(b.dataset.tab)));
     $("tabs").querySelectorAll("[data-group]").forEach(b=>b.onclick=()=>{expandedGroup=b.dataset.group;goScreen("group")});
     const back=$("tabs").querySelector("[data-back]");if(back)back.onclick=()=>{if(group){expandedGroup=group[0];goScreen("group")}else goScreen("dashboard")};
   }
+
+  let chatPeer=null, commChannel=null;
+  async function commQuery(q){const {data,error}=await q;if(error)throw error;return data||[]}
+  async function communications(){
+    const tab=activeTab, peer=chatPeer, me=sessionUser.id;
+    const contacts=await rpc("internal_contacts",{});
+    const names=Object.fromEntries(contacts.map(p=>[p.id,p.full_name||p.role]));
+    const messages=await commQuery(sb.from(tab==="chat"?"internal_messages":"internal_notices").select("*").order("created_at",{ascending:false}).limit(500));
+    if(activeTab!==tab||chatPeer!==peer)return;
+    const date=x=>new Date(x).toLocaleString("ar-EG");
+    if(tab==="chat"){
+      if(!peer){
+        setContent('<div class="ux-list">'+contacts.map(p=>{const m=messages.find(x=>x.sender===p.id||x.recipient===p.id);const n=messages.filter(x=>x.sender===p.id&&!x.read_at).length;return '<button data-peer="'+p.id+'"><span>◯</span><div style="flex:1;text-align:right"><strong>'+esc(p.full_name||p.role)+'</strong><div class="muted">'+esc(m?.body||"ابدأ محادثة")+'</div></div><span>'+ (n||"‹")+'</span></button>'}).join("")+'</div>');
+        $("content").querySelectorAll("[data-peer]").forEach(b=>b.onclick=()=>{chatPeer=b.dataset.peer;communications().catch(fail)});return;
+      }
+      const list=messages.filter(x=>x.sender===peer||x.recipient===peer).reverse();
+      setContent('<div class="panel-card"><button id="chat-back">→ المحادثات</button><h3>'+esc(names[peer])+'</h3><div class="chat-thread">'+list.map(x=>'<div class="chat-bubble '+(x.sender===me?"mine":"")+'">'+esc(x.body)+'<small>'+date(x.created_at)+(x.sender===me?(x.read_at?" · تمت القراءة":" · تم الإرسال"):"")+'</small></div>').join("")+'</div><form id="chat-send"><input name="body" required maxlength="4000" placeholder="اكتب رسالة"><button>إرسال</button></form></div>');
+      $("chat-back").onclick=()=>{chatPeer=null;communications().catch(fail)};
+      $("chat-send").onsubmit=async e=>{e.preventDefault();try{await commQuery(sb.from("internal_messages").insert({recipient:peer,body:e.target.elements.body.value.trim()}));await communications()}catch(e){fail(e)}};
+      if(list.some(x=>x.recipient===me&&!x.read_at))await commQuery(sb.from("internal_messages").update({read_at:new Date().toISOString()}).eq("recipient",me).eq("sender",peer).is("read_at",null));
+    }else{
+      setContent((profile.role==="admin"?'<div class="panel-card"><h3>إرسال إشعار جديد</h3><form id="notice-send"><select name="target"><option value="all">جميع المستخدمين</option><option value="admin">الأدمنز</option><option value="distributor">الموزعون</option>'+contacts.map(p=>'<option value="'+p.id+'">'+esc(p.full_name||p.role)+'</option>').join("")+'</select><input name="title" required maxlength="200" placeholder="عنوان الإشعار"><textarea name="body" required maxlength="4000" placeholder="محتوى الإشعار"></textarea><button>إرسال</button></form></div>':'')+'<button id="notice-read">تحديد الكل كمقروء</button>'+messages.filter(x=>x.recipient===me).map(x=>'<div class="panel-card"><strong>'+esc(x.title)+(x.read_at?"":" •")+'</strong><p>'+esc(x.body)+'</p><small>'+date(x.created_at)+'</small></div>').join(""));
+      $("notice-read").onclick=async()=>{try{await commQuery(sb.from("internal_notices").update({read_at:new Date().toISOString()}).eq("recipient",me).is("read_at",null));await communications()}catch(e){fail(e)}};
+      if($("notice-send"))$("notice-send").onsubmit=async e=>{e.preventDefault();try{const f=e.target.elements,t=f.target.value;const recipients=contacts.filter(p=>t==="all"||p.id===t||p.role===t);if(!recipients.length)return toast("لا يوجد مستلمون");await commQuery(sb.from("internal_notices").insert(recipients.map(p=>({recipient:p.id,title:f.title.value.trim(),body:f.body.value.trim()}))));e.target.reset();toast("تم إرسال الإشعار")}catch(e){fail(e)}};
+    }
+  }
+  function startCommunications(){if(commChannel)return;commChannel=sb.channel("internal-comms").on("postgres_changes",{event:"*",schema:"public",table:"internal_messages"},()=>{if(activeTab==="chat"&&!document.querySelector("#chat-send input:focus"))communications().catch(fail)}).on("postgres_changes",{event:"INSERT",schema:"public",table:"internal_notices"},()=>{if(activeTab==="notifications"&&!document.querySelector("#notice-send :focus"))communications().catch(fail)}).subscribe()}
   async function render(){
+    startCommunications();
+    if(activeTab==='chat'||activeTab==='notifications')return communications().catch(fail);
     if(profile && !profileComplete() && activeTab!=="profile" && !(profile.role==="admin"&&activeTab==="people")){activeTab="profile";renderTabs();return profilePage();}
     try{
       if(activeTab==="dashboard"||activeTab==="group")return setContent("");
