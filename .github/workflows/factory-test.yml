@@ -38,8 +38,7 @@ jobs:
           alter table storage.objects enable row level security;
           create function storage.foldername(text) returns text[] language sql immutable as $$ select string_to_array($1,'/') $$;
           SQL
-          psql -v ON_ERROR_STOP=1 -f sql/schema.sql
-          for f in supabase/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -f "$f"; done
+          psql -v ON_ERROR_STOP=1 -f sql/tests/factory_base.sql
       - name: Apply factory migrations
         run: |
           for f in packaging roasting blends packing; do psql -v ON_ERROR_STOP=1 -f "sql/factory_$f.sql"; done
