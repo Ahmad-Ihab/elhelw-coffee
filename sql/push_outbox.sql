@@ -1,0 +1,15 @@
+create table public.push_devices(token text primary key,user_id uuid not null default auth.uid() references public.profiles(id) on delete cascade,updated_at timestamptz default now());
+alter table public.push_devices enable row level security;
+revoke all on public.push_devices from anon,authenticated;
+grant select,insert,update,delete on public.push_devices to authenticated;
+create policy own_push_device on public.push_devices for all to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
+create table public.push_outbox(id bigint generated always as identity primary key,recipient uuid not null,kind text not null,created_at timestamptz default now(),sent_at timestamptz);
+alter table public.push_outbox enable row level security;
+revoke all on public.push_outbox from anon,authenticated;
+grant select,update,delete on public.push_outbox to service_role;
+grant select,delete on public.push_devices to service_role;
+create function public.queue_internal_push() returns trigger language plpgsql security definer set search_path='' as $$begin if TG_TABLE_NAME='chat_group_messages' then insert into public.push_outbox(recipient,kind) select user_id,'chat' from public.chat_group_members where group_id=new.group_id and user_id<>new.sender; else insert into public.push_outbox(recipient,kind) values(new.recipient,case when TG_TABLE_NAME='internal_notices' then 'notice' else 'chat' end); end if;return new;end$$;
+revoke all on function public.queue_internal_push() from public,anon,authenticated;
+create trigger push_direct after insert on public.internal_messages for each row execute function public.queue_internal_push();
+create trigger push_group after insert on public.chat_group_messages for each row execute function public.queue_internal_push();
+create trigger push_notice after insert on public.internal_notices for each row execute function public.queue_internal_push();
