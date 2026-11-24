@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "212039042533",
+    "project_id": "elhelw-distribution",
+    "storage_bucket": "elhelw-distribution.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:212039042533:android:7352c86c67fc657f195b0c",
+        "android_client_info": {
+          "package_name": "com.elhelwcoffee.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVcozT70le6SJ5mGpqn-UD9NRxF4oALus"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
