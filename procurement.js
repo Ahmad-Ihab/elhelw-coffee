@@ -10,7 +10,7 @@
   const rows = async (table, select="*") => { const {data,error}=await sb.from(table).select(select); if(error) throw error; return data||[]; };
   const save = async (table,payload) => { const {error}=await sb.from(table).insert(payload); if(error) throw error; };
   const tabs = () => '<div class="tabs" style="margin:12px 0;flex-wrap:wrap">'+[
-    ["suppliers","الموردون"],["materials","الخامات والأسعار"],["orders","طلبيات الموردين"],["stock","مخزون الخامات"],["recipes","توليفات الإنتاج"]
+    ["suppliers","الموردون"],["materials","الخامات والأسعار"],["orders","طلبيات الموردين"],["stock","مخزون الخامات"],["recipes","توليفات الإنتاج"],["packaging","مخزون التعبئة والتغليف"]
   ].map(([id,label])=>'<button class="tab '+(view===id?'active':'')+'" data-view="'+id+'">'+label+'</button>').join("")+'</div>';
   const panel = (title,body,action="") => '<section class="panel-card">'+
     '<div class="section-head"><h2>'+title+'</h2>'+action+'</div>'+body+'</section>';
@@ -148,10 +148,37 @@
       notify("تم حفظ التوليفة، وستظهر في الحاسبة");await render();
     }catch(x){showError(x)}};
   }
+
+  async function packagingPage(){
+    const [items,moves]=await Promise.all([rows("packaging_items"),rows("packaging_movements")]);
+    if(view!=="packaging")return;
+    items.sort((a,b)=>a.kind.localeCompare(b.kind)||a.weight_g-b.weight_g||a.sku.localeCompare(b.sku));
+    const table=items.map(i=>'<tr><td>'+esc(i.name)+'</td><td>'+num(i.quantity)+'</td><td>'+money(i.average_cost)+'</td><td>'+money(Number(i.quantity)*Number(i.average_cost))+'</td></tr>').join("");
+    const history=moves.sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(m=>'<tr><td>'+esc(new Date(m.created_at).toLocaleString("ar-EG"))+'</td><td>'+esc(items.find(i=>i.sku===m.sku)?.name||m.sku)+'</td><td>'+esc(({purchase:"شراء",opening:"رصيد افتتاحي",waste:"هالك",adjustment_in:"تسوية إضافة",adjustment_out:"تسوية خصم"})[m.movement_type])+'</td><td>'+num(m.quantity_delta)+'</td><td>'+money(m.unit_cost)+'</td><td>'+esc(suppliers.find(s=>s.id===m.supplier_id)?.name||"-")+'</td><td>'+esc(m.invoice_number||"-")+'</td><td>'+esc(m.notes||"-")+'</td></tr>').join("");
+    set(panel("مخزون التعبئة والتغليف",'<p class="muted">الأرصدة بالقطعة والتكلفة بالجنيه لكل قطعة.</p><p>إجمالي قيمة المخزون: <b>'+money(items.reduce((a,i)=>a+Number(i.quantity)*Number(i.average_cost),0))+'</b></p><div class="table-wrap"><table><thead><tr><th>الصنف</th><th>الرصيد</th><th>متوسط التكلفة</th><th>القيمة</th></tr></thead><tbody>'+table+'</tbody></table></div>',btn("pack-move","تسجيل حركة"))+panel("سجل الحركات",'<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الصنف</th><th>الحركة</th><th>الكمية</th><th>تكلفة القطعة</th><th>المورد</th><th>الفاتورة</th><th>ملاحظات</th></tr></thead><tbody>'+(history||'<tr><td colspan="8">لا توجد حركات</td></tr>')+'</tbody></table></div>'));
+    q("pack-move").onclick=()=>packagingForm(items);
+  }
+  function packagingForm(items){
+    if(q("pack-form"))return;
+    const types=[["purchase","شراء"],["opening","رصيد افتتاحي"],["waste","هالك"],["adjustment_in","تسوية إضافة"],["adjustment_out","تسوية خصم"]];
+    root.insertAdjacentHTML("afterbegin",'<form id="pack-form" class="form-panel"><h3>حركة تعبئة وتغليف</h3><div class="form-grid">'+select("الصنف","sku",items.map(i=>({value:i.sku,label:i.name})))+select("نوع الحركة","type",types.map(([value,label])=>({value,label})))+input("الكمية بالقطعة","qty","number",'required min="1" step="1"')+input("إجمالي التكلفة بالجنيه","cost","number",'min="0" step="0.01"')+select("المورد","supplier",suppliers.filter(s=>s.active).map(s=>({value:s.id,label:s.name})))+input("رقم الفاتورة","invoice")+input("السبب / ملاحظات","notes")+'</div><div class="form-actions"><button class="primary">حفظ</button><button type="button" class="secondary" data-close>إلغاء</button></div></form>');
+    const f=q("pack-form"),e=f.elements;let pending=false,requestId=null,signature=null;
+    const sync=()=>{const t=e.type.value,inc=["purchase","opening","adjustment_in"].includes(t);e.cost.disabled=!inc;e.cost.required=inc;e.supplier.disabled=t!=="purchase";e.supplier.required=t==="purchase";e.invoice.disabled=t!=="purchase";e.notes.required=["waste","adjustment_in","adjustment_out"].includes(t);};
+    e.type.onchange=sync;sync();
+    f.querySelector("[data-close]").onclick=()=>{if(!pending)f.remove()};
+    f.onsubmit=async ev=>{ev.preventDefault();if(pending)return;const d=new FormData(f),qty=Number(d.get("qty")),t=d.get("type"),cost=d.get("cost");
+      if(!Number.isSafeInteger(qty)||qty<=0)return notify("أدخل عدد قطع صحيح");
+      const payload={p_sku:d.get("sku"),p_type:t,p_quantity:qty,p_unit_cost:cost===null?null:Number(cost)/qty,p_supplier:d.get("supplier")||null,p_invoice:d.get("invoice")||null,p_notes:d.get("notes")||null};
+      const next=JSON.stringify(payload);if(signature!==next){requestId=crypto.randomUUID();signature=next;}
+      pending=true;const b=f.querySelector('button.primary');b.disabled=true;
+      try{const {error}=await sb.rpc("record_packaging_movement",{p_id:requestId,...payload});if(error)throw error;notify("تم تسجيل الحركة");await render();}
+      catch(x){showError(x)}finally{pending=false;b.disabled=false;}
+    };
+  }
   async function render(){
     root.innerHTML='<div class="panel-card">جارٍ تحميل بيانات الموردين والخامات...</div>';
     await load();
-    if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else if(view==="recipes")recipesPage();else stockPage();
+    if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else if(view==="recipes")recipesPage();else if(view==="packaging")await packagingPage();else stockPage();
   }
   window.renderElhelwProcurement=async function(target,client){
     root=target;sb=client;view="suppliers";
