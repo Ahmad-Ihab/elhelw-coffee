@@ -1,0 +1,3 @@
+create function public.chat_person_card(p_id uuid) returns table(id uuid,full_name text,legal_full_name text,national_id text,role text,avatar_path text) language sql stable security definer set search_path='' as $$select p.id,p.full_name,case when public.is_admin() or p.id=auth.uid() then p.legal_full_name else null end,case when public.is_admin() or p.id=auth.uid() then p.national_id else null end,p.role,p.avatar_path from public.profiles p where auth.uid() is not null and p.id=p_id and (public.is_admin() or p.role='admin' or p.id=auth.uid())$$;
+revoke all on function public.chat_person_card(uuid) from public,anon;
+grant execute on function public.chat_person_card(uuid) to authenticated;
