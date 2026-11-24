@@ -262,7 +262,7 @@
   async function onlineStock(){
     if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك بعرض مخزون الأونلاين.</div>');
     setContent(section("مخزون الأونلاين",'<button id="refresh-online-stock" class="secondary">تحديث من الموقع ↻</button>')+
-      '<div class="panel-card"><p class="muted">قراءة فقط من WooCommerce. لا يمكن تعديل أو إضافة أو خصم أي كمية من التطبيق.</p><div id="online-stock-state" class="hint">جارٍ جلب المخزون من الموقع...</div></div>');
+      '<div class="panel-card"><div id="online-stock-state" class="hint">جارٍ جلب المخزون من الموقع...</div></div>');
     const btn=$("refresh-online-stock"),state=$("online-stock-state");
     if(btn)btn.onclick=()=>loadOnlineStock();
     async function loadOnlineStock(){
