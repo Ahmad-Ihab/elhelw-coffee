@@ -53,3 +53,6 @@
 .inventory-bag-cell small{font-size:10px;color:var(--muted)}
 .inventory-bag-total{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding:11px 13px;border-radius:11px;background:var(--coffee);color:#fff;font-size:12px;font-weight:700}
 .inventory-bag-total strong{font-size:21px}
+
+/* Mobile workspace navigation */
+#tabs{display:block;overflow:visible;width:100%}.ux-nav{width:100%;display:grid;gap:10px}.ux-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ux-grid.ux-large{grid-template-columns:repeat(2,minmax(0,1fr))}.ux-tile,.ux-home{background:var(--panel,#fff);color:var(--text,#39271e);border:1px solid var(--line,#dfd4c8);border-radius:14px;padding:10px;min-height:48px;white-space:normal}.ux-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:12px}.ux-tile span{font-size:24px}.ux-large .ux-tile{min-height:90px;font-size:16px}.ux-large .ux-tile span{font-size:32px}.ux-tile.selected{border:2px solid #a16b32}.ux-sub{display:flex;flex-wrap:wrap;gap:8px}.ux-sub .tab{min-height:44px;white-space:normal}.ux-home{font-weight:700;text-align:start}.panel-card,.form-panel{border-radius:16px}.table-wrap{max-width:100%;overflow:auto} @media(min-width:800px){.ux-grid.ux-large{grid-template-columns:repeat(4,minmax(0,1fr))}}
