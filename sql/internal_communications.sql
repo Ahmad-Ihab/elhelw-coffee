@@ -1,0 +1,17 @@
+create table public.internal_messages(id uuid primary key default gen_random_uuid(),sender uuid not null default auth.uid() references public.profiles(id),recipient uuid not null references public.profiles(id),body text not null check(length(trim(body)) between 1 and 4000),created_at timestamptz not null default now(),read_at timestamptz);
+create table public.internal_notices(id uuid primary key default gen_random_uuid(),sender uuid not null default auth.uid() references public.profiles(id),recipient uuid not null references public.profiles(id),title text not null check(length(trim(title)) between 1 and 200),body text not null check(length(trim(body)) between 1 and 4000),created_at timestamptz not null default now(),read_at timestamptz);
+alter table public.internal_messages enable row level security;
+alter table public.internal_notices enable row level security;
+revoke all on public.internal_messages,public.internal_notices from anon,authenticated;
+grant select,insert(sender,recipient,body),update(read_at) on public.internal_messages to authenticated;
+grant select,insert(sender,recipient,title,body),update(read_at) on public.internal_notices to authenticated;
+create policy msg_read on public.internal_messages for select to authenticated using(auth.uid() in(sender,recipient));
+create policy msg_send on public.internal_messages for insert to authenticated with check(sender=auth.uid() and sender<>recipient and (public.is_admin() or exists(select 1 from public.profiles p where p.id=recipient and p.role='admin')));
+create policy msg_seen on public.internal_messages for update to authenticated using(recipient=auth.uid()) with check(recipient=auth.uid());
+create policy notice_read on public.internal_notices for select to authenticated using(recipient=auth.uid() or sender=auth.uid());
+create policy notice_send on public.internal_notices for insert to authenticated with check(sender=auth.uid() and public.is_admin());
+create policy notice_seen on public.internal_notices for update to authenticated using(recipient=auth.uid()) with check(recipient=auth.uid());
+create function public.internal_contacts() returns table(id uuid,full_name text,role text) language sql stable security definer set search_path='' as $$select p.id,p.full_name,p.role from public.profiles p where auth.uid() is not null and (public.is_admin() or p.role='admin') and p.id<>auth.uid()$$;
+revoke all on function public.internal_contacts() from public,anon;
+grant execute on function public.internal_contacts() to authenticated;
+alter publication supabase_realtime add table public.internal_messages,public.internal_notices;
