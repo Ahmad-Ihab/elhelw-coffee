@@ -141,3 +141,6 @@ manifest = manifest.replace(/<uses-permission\b[^>]*android:name=["']android\.pe
 fs.writeFileSync(manifestPath, manifest, "utf8");
 // Version metadata is applied by scripts/set-android-version.js in the build workflow.
 console.log("Registered native InvoicePdf plugin in " + mainPath);
+
+const firebaseConfig = path.resolve(__dirname,"..","firebase","google-services.json");
+if(fs.existsSync(firebaseConfig)) fs.copyFileSync(firebaseConfig,path.resolve(__dirname,"..","android","app","google-services.json"));
