@@ -29,7 +29,7 @@ begin
 end; $$;
 create function public.record_factory_packing(p_id uuid,p_version uuid,p_bags jsonb,p_processing_cost numeric default 0) returns uuid
 language plpgsql security definer set search_path='' as $$
-declare m public.factory_product_mapping%rowtype; b public.factory_packing_batches%rowtype; st public.factory_blend_stock%rowtype; item public.packaging_items%rowtype; k text; n bigint; sku text; kg numeric; total numeric; requirements jsonb:='{}'::jsonb;
+declare m public.factory_product_mapping%rowtype; b public.factory_packing_batches%rowtype; st public.factory_blend_stock%rowtype; item public.packaging_items%rowtype; k text; n bigint; v_sku text; kg numeric; total numeric; requirements jsonb:='{}'::jsonb;
 begin
  if auth.uid() is null or not coalesce(public.is_admin(),false) then raise exception 'Admin required'; end if;
  if p_id is null or p_processing_cost is null or p_processing_cost<0 or p_processing_cost::text in ('NaN','Infinity','-Infinity') then raise exception 'Invalid request'; end if;
@@ -49,20 +49,20 @@ begin
  n:=(p_bags->>k)::bigint;
  if n=0 then continue; end if;
  if k not in ('50','100','200','500','1000') then raise exception 'Unsupported packaging size'; end if;
- sku:='BAG-'||k; requirements:=requirements||jsonb_build_object(sku,n);
+ v_sku:='BAG-'||k; requirements:=requirements||jsonb_build_object(v_sku,n);
  if k in ('50','100','200') then
  if m.label_family is null then raise exception 'Label mapping required'; end if;
- sku:='LABEL-'||m.label_family||'-'||case when k='200' then '200' else '100' end;
- requirements:=requirements||jsonb_build_object(sku,coalesce((requirements->>sku)::bigint,0)+n);
+ v_sku:='LABEL-'||m.label_family||'-'||case when k='200' then '200' else '100' end;
+ requirements:=requirements||jsonb_build_object(v_sku,coalesce((requirements->>v_sku)::bigint,0)+n);
  end if;
  end loop;
- for sku,n in select key,value::bigint from jsonb_each_text(requirements) order by key loop
- select * into strict item from public.packaging_items where packaging_items.sku=record_factory_packing.sku for update;
- if item.quantity<n then raise exception 'Insufficient packaging: %',sku; end if;
- update public.packaging_items set quantity=quantity-n where packaging_items.sku=record_factory_packing.sku;
+ for v_sku,n in select key,value::bigint from jsonb_each_text(requirements) order by key loop
+ select * into strict item from public.packaging_items where packaging_items.sku=v_sku for update;
+ if item.quantity<n then raise exception 'Insufficient packaging: %',v_sku; end if;
+ update public.packaging_items set quantity=quantity-n where packaging_items.sku=v_sku;
  total:=total+n*item.average_cost;
  insert into public.packaging_movements(id,sku,quantity_delta,unit_cost,movement_type,notes,created_by)
- values(gen_random_uuid(),sku,-n,item.average_cost,'adjustment_out','Packing batch '||p_id,auth.uid());
+ values(gen_random_uuid(),v_sku,-n,item.average_cost,'adjustment_out','Packing batch '||p_id,auth.uid());
  end loop;
  update public.factory_blend_stock set quantity_kg=quantity_kg-kg where version_id=p_version;
  insert into public.company_stock_balances(product_id,quantity,bag_counts) values(m.product_id,kg,p_bags)
@@ -76,6 +76,8 @@ create function public.record_factory_direct_pack(p_blend_id uuid,p_pack_id uuid
 language plpgsql security definer set search_path='' as $$
 begin
  if auth.uid() is null or not coalesce(public.is_admin(),false) then raise exception 'Admin required'; end if;
+ perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_version::text,1));
+ perform 1 from public.factory_blend_versions where id=p_version for update;
  perform public.record_factory_blend(p_blend_id,p_version,p_input,public.bags_to_kg(p_bags),p_additive_costs,p_blend_cost);
  return public.record_factory_packing(p_pack_id,p_version,p_bags,p_pack_cost);
 end; $$;
