@@ -1,0 +1,46 @@
+name: Factory database checks
+on:
+  push:
+    branches: [feature/factory-packaging]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: test
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --check procurement.js
+      - name: Initialize isolated database
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          create role anon;
+          create role authenticated;
+          create role service_role;
+          create schema auth;
+          create table auth.users(id uuid primary key, email text, raw_user_meta_data jsonb);
+          create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+          create schema storage;
+          create table storage.buckets(id text primary key,name text,public boolean);
+          create table storage.objects(id uuid primary key,bucket_id text,name text,owner uuid);
+          alter table storage.objects enable row level security;
+          create function storage.foldername(text) returns text[] language sql immutable as $$ select string_to_array($1,'/') $$;
+          SQL
+          psql -v ON_ERROR_STOP=1 -f sql/schema.sql
+          for f in supabase/migrations/*.sql; do psql -v ON_ERROR_STOP=1 -f "$f"; done
+      - name: Apply factory migrations
+        run: |
+          for f in packaging roasting blends packing; do psql -v ON_ERROR_STOP=1 -f "sql/factory_$f.sql"; done
+          psql -v ON_ERROR_STOP=1 -c "do \$\$ begin if (select count(*) from public.packaging_items) <> 21 then raise exception 'Packaging seed mismatch'; end if; end \$\$;"
