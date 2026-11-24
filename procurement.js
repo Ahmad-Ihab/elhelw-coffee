@@ -241,8 +241,8 @@
     await load();
     if(view==="suppliers")supplierPage();else if(view==="materials")materialPage();else if(view==="orders")orderPage();else if(view==="recipes")recipesPage();else if(view==="packaging")await packagingPage();else if(view==="roasting")await roastingPage();else if(view==="factory")await factoryPage();else stockPage();
   }
-  window.renderElhelwProcurement=async function(target,client){
-    root=target;sb=client;view="suppliers";
+  window.renderElhelwProcurement=async function(target,client,initial="suppliers"){
+    root=target;sb=client;view=initial;
     await render().catch(showError);
   };
 })();
