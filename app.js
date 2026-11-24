@@ -60,10 +60,19 @@
     $("refresh-btn").onclick=render;
     renderTabs();await render();
   }
+  const groupsAdmin=[["المبيعات","🛒",["orders","cafes","products","returns"]],["المصنع","☕",["roasting","factory","productionCalculator"]],["المخازن","📦",["inventory","rawStock","packaging","onlineStock","sampleInventory"]],["الحسابات","💳",["finance","commissions"]],["التوزيع","🚚",["distributors","people"]],["المشتريات","🧾",["procurement"]],["الإدارة","⚙",["adminTools","profile"]]];
+  const groupsDist=[["الطلبيات","🛒",["orders","returns"]],["مخزوني","📦",["inventory","samples"]],["الكافيهات","☕",["cafes"]],["حساباتي","💳",["finance"]],["حسابي","⚙",["profile"]]];
+  let expandedGroup="";
   function renderTabs(){
-    const tabs=profile.role==="admin"?adminTabs:distTabs;
-    $("tabs").innerHTML=tabs.map(([id,label])=>`<button class="tab ${activeTab===id?"active":""}" data-tab="${id}">${label}</button>`).join("");
-    $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{const adminDirectory=profile.role==="admin"&&b.dataset.tab==="people";if(!profileComplete() && b.dataset.tab!=="profile"&&!adminDirectory)return toast("أكمل اسم الحساب والصورة الشخصية"+(profile.role==="distributor"?" ورقم البطاقة":"")+" أولاً");activeTab=b.dataset.tab;renderTabs();render()});
+    const admin=profile.role==="admin", tabs=admin?adminTabs:distTabs, groups=admin?groupsAdmin:groupsDist;
+    const labels=Object.fromEntries([...tabs,["roasting","التحميص"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"]]);
+    const group=groups.find(g=>g[2].includes(activeTab));
+    if(group)expandedGroup=group[0];
+    const home=activeTab==="dashboard"&&!expandedGroup;
+    $("tabs").innerHTML='<div class="ux-nav"><button class="ux-home" data-tab="dashboard">⌂ الرئيسية</button><div class="ux-grid '+(home?'ux-large':'')+'">'+groups.map(([name,icon,ids])=>'<button class="ux-tile '+(expandedGroup===name?'selected':'')+'" data-group="'+name+'"><span aria-hidden="true">'+icon+'</span><strong>'+name+'</strong></button>').join("")+'</div>'+groups.filter(g=>g[0]===expandedGroup).map(g=>'<div class="ux-sub">'+g[2].map(id=>'<button class="tab '+(activeTab===id?'active':'')+'" data-tab="'+id+'">'+labels[id]+'</button>').join("")+'</div>').join("")+'</div>';
+    const go=id=>{if(!profileComplete()&&id!=="profile"&&!(admin&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();render()};
+    $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>go(b.dataset.tab));
+    $("tabs").querySelectorAll("[data-group]").forEach(b=>b.onclick=()=>{const g=groups.find(x=>x[0]===b.dataset.group);expandedGroup=g[0];go(g[2][0])});
   }
   async function render(){
     if(profile && !profileComplete() && activeTab!=="profile" && !(profile.role==="admin"&&activeTab==="people")){activeTab="profile";renderTabs();return profilePage();}
@@ -82,7 +91,7 @@
       if(activeTab==="finance")return finance();
       if(activeTab==="returns")return returnsPage();
       if(activeTab==="productionCalculator")return productionCalculator();
-      if(activeTab==="procurement")return procurementPage();
+      if(["procurement","roasting","factory","rawStock","packaging"].includes(activeTab))return procurementPage();
       if(activeTab==="adminTools")return adminTools();
       if(activeTab==="profile")return profilePage();
     }catch(e){fail(e);setContent(`<div class="panel-card error">${esc(e.message)}</div>`)}
@@ -97,7 +106,7 @@
     if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك باستخدام إدارة الموردين.</div>');
     setContent('<div id="procurement-workspace"></div>');
     if(typeof window.renderElhelwProcurement!=="function")throw new Error("ملف إدارة الموردين لم يتم تحميله. حدّث التطبيق وحاول مرة أخرى.");
-    await window.renderElhelwProcurement($("procurement-workspace"),sb);
+    await window.renderElhelwProcurement($("procurement-workspace"),sb,({roasting:"roasting",factory:"factory",rawStock:"stock",packaging:"packaging"})[activeTab]||"suppliers");
   }
   async function adminTools(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
