@@ -16,7 +16,7 @@
   async function rpc(name,args){let {data,error}=await sb.rpc(name,args);if(error)throw error;return data}
   function setContent(html){$("content").innerHTML=html;enhanceTables($("content"))}
   function enhanceTables(root){root.querySelectorAll(".table-wrap").forEach(w=>{const table=w.querySelector("table");if(!table||w.previousElementSibling?.classList.contains("ux-search"))return;const input=document.createElement("input");input.className="ux-search";input.type="search";input.placeholder="بحث في القائمة…";input.setAttribute("aria-label","بحث في القائمة");w.before(input);input.oninput=()=>{const term=input.value.trim().toLowerCase();table.querySelectorAll("tbody tr").forEach(tr=>tr.hidden=!tr.textContent.toLowerCase().includes(term))}})}
-  function navigateTo(id){const b=$("tabs").querySelector('[data-tab="'+id+'"]');if(b)b.click();else{const groups=profile.role==="admin"?groupsAdmin:groupsDist;const g=groups.find(x=>x[2].includes(id));if(g){$("tabs").querySelectorAll("[data-group]").forEach(x=>{if(x.dataset.group===g[0])x.click()});$("tabs").querySelector('[data-tab="'+id+'"]')?.click()}}}
+  function navigateTo(id){goScreen(id)}
   function chartBars(items){const max=Math.max(1,...items.map(x=>x[1]));return '<div class="ux-chart">'+items.map(([label,n])=>'<div class="ux-bar-row"><span>'+esc(label)+'</span><div class="ux-track"><div style="width:'+Math.max(0,100*n/max)+'%"></div></div><strong>'+qty(n)+'</strong></div>').join("")+'</div>'}
 
   const bagFields = p => [["25","25 جرام"],["50","50 جرام"],["100","100 جرام"],["200","200 جرام"],["500","500 جرام"],["1000","1 كيلو"]].map(([k,l])=>field("عدد أكياس "+l,p+k,"number",'min="0" step="1" value="0" required')).join("");
@@ -64,24 +64,30 @@
     $("refresh-btn").onclick=render;
     renderTabs();await render();
   }
-  const groupsAdmin=[["المبيعات","🛒",["orders","cafes","products","returns"]],["المصنع","☕",["roasting","factory","productionCalculator"]],["المخازن","📦",["inventory","rawStock","packaging","onlineStock","sampleInventory"]],["الحسابات","💳",["finance","commissions"]],["التوزيع","🚚",["distributors","people"]],["المشتريات","🧾",["procurement"]],["الإدارة","⚙",["adminTools","profile"]]];
-  const groupsDist=[["الطلبيات","🛒",["orders","returns"]],["مخزوني","📦",["inventory","samples"]],["الكافيهات","☕",["cafes"]],["حساباتي","💳",["finance"]],["حسابي","⚙",["profile"]]];
+  const groupsAdmin=[["المبيعات","cart",["orders","cafes","products","returns"]],["المصنع","factory",["roasting","recipes","factory","productionCalculator"]],["المخازن","box",["inventory","rawStock","packaging","onlineStock","sampleInventory"]],["الحسابات","wallet",["finance","commissions"]],["التوزيع","truck",["distributors","people"]],["المشتريات","clipboard",["procurement","materials","supplierOrders"]],["الإدارة","settings",["adminTools"]]];
+  const groupsDist=[["الطلبيات","cart",["orders","returns"]],["مخزوني","box",["inventory","samples"]],["الكافيهات","coffee",["cafes"]],["حساباتي","wallet",["finance"]]];
+  const paths={cart:'<circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2 3h3l3 13h12l2-9H6"/>',factory:'<path d="M3 21V9l7 4V9l7 4V3h4v18Z"/><path d="M7 17h2m4 0h2"/>',box:'<path d="m3 7 9-5 9 5v10l-9 5-9-5Z M3 7l9 5 9-5M12 12v10"/>',wallet:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M21 10h-6v5h6"/>',truck:'<path d="M2 5h13v13H2ZM15 10h4l3 4v4h-7"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/>',clipboard:'<rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 2h6v5H9ZM9 12h6m-6 4h6"/>',settings:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',coffee:'<path d="M3 8h14v7a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5ZM17 9h2a3 3 0 0 1 0 6h-2M7 2v3m5-3v3"/>',home:'<path d="m3 10 9-8 9 8v11H3Z M9 21v-8h6v8"/>',chart:'<path d="M3 3v18h18M7 16l5-6 4 3 5-8"/>',user:'<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>'};
+  const glyph=k=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[k]||paths.clipboard)+'</svg>';
   let expandedGroup="";
+  function goScreen(id){if(!profileComplete()&&id!=="profile"&&!(profile.role==="admin"&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();render();window.scrollTo(0,0)}
   function renderTabs(){
-    const admin=profile.role==="admin", tabs=admin?adminTabs:distTabs, groups=admin?groupsAdmin:groupsDist;
-    const labels=Object.fromEntries([...tabs,["roasting","التحميص"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"]]);
-    const group=groups.find(g=>g[2].includes(activeTab));
-    if(group)expandedGroup=group[0];
-    const home=activeTab==="dashboard"&&!expandedGroup;
-    $("tabs").innerHTML='<div class="ux-nav"><button class="ux-home" data-tab="dashboard">⌂ الرئيسية</button><div class="ux-grid '+(home?'ux-large':'')+'">'+groups.map(([name,icon,ids])=>'<button class="ux-tile '+(expandedGroup===name?'selected':'')+'" data-group="'+name+'"><span aria-hidden="true">'+icon+'</span><strong>'+name+'</strong></button>').join("")+'</div>'+groups.filter(g=>g[0]===expandedGroup).map(g=>'<div class="ux-sub">'+g[2].map(id=>'<button class="tab '+(activeTab===id?'active':'')+'" data-tab="'+id+'">'+labels[id]+'</button>').join("")+'</div>').join("")+'</div>';
-    const go=id=>{if(!profileComplete()&&id!=="profile"&&!(admin&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();render()};
-    $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>go(b.dataset.tab));
-    $("tabs").querySelectorAll("[data-group]").forEach(b=>b.onclick=()=>{const g=groups.find(x=>x[0]===b.dataset.group);expandedGroup=g[0];go(g[2][0])});
+    const admin=profile.role==="admin",tabs=admin?adminTabs:distTabs,groups=admin?groupsAdmin:groupsDist;
+    const labels=Object.fromEntries([...tabs,["roasting","التحميص"],["recipes","التوليفات"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"],["materials","الخامات والأسعار"],["supplierOrders","طلبيات الموردين"],["reports","التقارير"]]);
+    const group=groups.find(g=>g[2].includes(activeTab)), selected=groups.find(g=>g[0]===expandedGroup);
+    const home=activeTab==="dashboard", menu=activeTab==="group";
+    document.querySelector(".welcome")?.classList.toggle("hidden",!home);
+    $("tabs").innerHTML=home?'<div class="ux-grid ux-large">'+groups.map(([name,k])=>'<button class="ux-tile" data-group="'+name+'">'+glyph(k)+'<strong>'+name+'</strong></button>').join("")+'</div>':menu&&selected?'<div class="ux-screen-head"><button data-tab="dashboard">→</button><h2>'+selected[0]+'</h2></div><div class="ux-list">'+selected[2].map(id=>'<button data-tab="'+id+'">'+glyph(selected[1])+'<strong>'+labels[id]+'</strong><span>‹</span></button>').join("")+'</div>':'<div class="ux-screen-head"><button data-back>→</button><h2>'+ (labels[activeTab]||"")+'</h2></div>';
+    let nav=document.getElementById("ux-bottom");if(!nav){nav=document.createElement("nav");nav.id="ux-bottom";document.body.append(nav)}
+    nav.innerHTML=[["dashboard","home","الرئيسية"],["reports","chart","التقارير"],["profile","user","حسابي"]].map(([id,k,l])=>'<button data-tab="'+id+'" class="'+(activeTab===id?'selected':'')+'">'+glyph(k)+'<span>'+l+'</span></button>').join("");
+    [$("tabs"),nav].forEach(el=>el.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>goScreen(b.dataset.tab)));
+    $("tabs").querySelectorAll("[data-group]").forEach(b=>b.onclick=()=>{expandedGroup=b.dataset.group;goScreen("group")});
+    const back=$("tabs").querySelector("[data-back]");if(back)back.onclick=()=>{if(group){expandedGroup=group[0];goScreen("group")}else goScreen("dashboard")};
   }
   async function render(){
     if(profile && !profileComplete() && activeTab!=="profile" && !(profile.role==="admin"&&activeTab==="people")){activeTab="profile";renderTabs();return profilePage();}
     try{
-      if(activeTab==="dashboard")return dashboard();
+      if(activeTab==="dashboard"||activeTab==="group")return setContent("");
+      if(activeTab==="reports")return dashboard();
       if(activeTab==="products")return products();
       if(activeTab==="commissions")return commissions();
       if(activeTab==="distributors")return distributors();
@@ -95,7 +101,7 @@
       if(activeTab==="finance")return finance();
       if(activeTab==="returns")return returnsPage();
       if(activeTab==="productionCalculator")return productionCalculator();
-      if(["procurement","roasting","factory","rawStock","packaging"].includes(activeTab))return procurementPage();
+      if(["procurement","roasting","factory","rawStock","packaging","recipes","materials","supplierOrders"].includes(activeTab))return procurementPage();
       if(activeTab==="adminTools")return adminTools();
       if(activeTab==="profile")return profilePage();
     }catch(e){fail(e);setContent(`<div class="panel-card error">${esc(e.message)}</div>`)}
@@ -110,7 +116,7 @@
     if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك باستخدام إدارة الموردين.</div>');
     setContent('<div id="procurement-workspace"></div>');
     if(typeof window.renderElhelwProcurement!=="function")throw new Error("ملف إدارة الموردين لم يتم تحميله. حدّث التطبيق وحاول مرة أخرى.");
-    await window.renderElhelwProcurement($("procurement-workspace"),sb,({roasting:"roasting",factory:"factory",rawStock:"stock",packaging:"packaging"})[activeTab]||"suppliers");
+    await window.renderElhelwProcurement($("procurement-workspace"),sb,({roasting:"roasting",factory:"factory",rawStock:"stock",packaging:"packaging",recipes:"recipes",materials:"materials",supplierOrders:"orders"})[activeTab]||"suppliers");
   }
   async function adminTools(){
     if(profile.role!=="admin")return setContent("غير مصرح.");
@@ -819,9 +825,6 @@
     try{
       const nativeUpdater=await waitForNativeUpdater();
       if(!nativeUpdater)return;
-      const lastCheck=Number(localStorage.getItem("elhelw_last_update_check")||0);
-      if(!force&&Date.now()-lastCheck<12*60*60*1000)return;
-      localStorage.setItem("elhelw_last_update_check",String(Date.now()));
       const current=await nativeUpdater.getAppInfo();
       const response=await fetch("https://api.github.com/repos/Ahmad-Ihab/elhelw-coffee/releases/latest",{cache:"no-store",headers:{Accept:"application/vnd.github+json"}});
       if(!response.ok)throw new Error("تعذر التحقق من وجود تحديث.");
