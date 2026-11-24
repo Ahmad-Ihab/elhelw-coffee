@@ -129,7 +129,6 @@ const manifestPath = path.resolve(__dirname, "..", "android", "app", "src", "mai
 if (!fs.existsSync(manifestPath)) throw new Error("AndroidManifest.xml was not generated.");
 let manifest = fs.readFileSync(manifestPath, "utf8");
 const permissions = [
-  "android.permission.REQUEST_INSTALL_PACKAGES",
   "android.permission.ACCESS_COARSE_LOCATION",
   "android.permission.ACCESS_FINE_LOCATION"
 ];
@@ -138,6 +137,7 @@ for (const permission of permissions) {
     manifest = manifest.replace("<application", '    <uses-permission android:name="' + permission + '" />\n    <application');
   }
 }
+manifest = manifest.replace(/<uses-permission\b[^>]*android:name=["']android\.permission\.REQUEST_INSTALL_PACKAGES["'][^>]*\/\s*>/g, "");
 fs.writeFileSync(manifestPath, manifest, "utf8");
 // Version metadata is applied by scripts/set-android-version.js in the build workflow.
 console.log("Registered native InvoicePdf plugin in " + mainPath);
