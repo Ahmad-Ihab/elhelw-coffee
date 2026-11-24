@@ -1,0 +1,5 @@
+create function public.create_internal_group(p_name text,p_members uuid[]) returns uuid language plpgsql security definer set search_path='' as $$declare g uuid;begin if auth.uid() is null or not public.is_admin() then raise exception 'Forbidden';end if; if coalesce(cardinality(p_members),0) not between 1 and 100 then raise exception 'Invalid members';end if;insert into public.chat_groups(name,creator) values(p_name,auth.uid()) returning id into g;insert into public.chat_group_members(group_id,user_id) select g,u from (select distinct unnest(p_members||array[auth.uid()]) u) s;return g;end$$;
+revoke all on function public.create_internal_group(text,uuid[]) from public,anon;
+grant execute on function public.create_internal_group(text,uuid[]) to authenticated;
+alter table public.internal_messages add constraint own_message_attachment check(attachment is null or split_part(attachment,'/',1)=sender::text);
+alter table public.chat_group_messages add constraint own_group_attachment check(attachment is null or split_part(attachment,'/',1)=sender::text);
