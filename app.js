@@ -70,6 +70,13 @@
   const glyph=k=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[k]||paths.clipboard)+'</svg>';
   let expandedGroup="";
   function goScreen(id){if(!profileComplete()&&id!=="profile"&&!(profile.role==="admin"&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();render();window.scrollTo(0,0)}
+  window.elhelwHandleBack=function(){
+    if(!profile||!document.getElementById("workspace")||document.getElementById("workspace").classList.contains("hidden"))return false;
+    const cancel=document.querySelector("#content form [data-cancel]");if(cancel){cancel.click();return true}
+    if(activeTab==="dashboard")return false;
+    const back=$("tabs").querySelector("[data-back]");if(back){back.click();return true}
+    goScreen("dashboard");return true;
+  };
   function renderTabs(){
     const admin=profile.role==="admin",tabs=admin?adminTabs:distTabs,groups=admin?groupsAdmin:groupsDist;
     const labels=Object.fromEntries([...tabs,["roasting","التحميص"],["recipes","التوليفات"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"],["materials","الخامات والأسعار"],["supplierOrders","طلبيات الموردين"],["reports","التقارير"]]);
