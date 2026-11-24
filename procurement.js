@@ -17,7 +17,7 @@
   const btn = (id,label) => '<button class="primary" type="button" id="'+id+'">'+label+'</button>';
   const input = (label,name,type="text",extra="") => '<label class="field">'+label+'<input name="'+name+'" type="'+type+'" '+extra+'></label>';
   const select = (label,name,opts) => '<label class="field">'+label+'<select name="'+name+'" required><option value="">اختر</option>'+opts.map(x=>'<option value="'+esc(x.value)+'">'+esc(x.label)+'</option>').join("")+'</select></label>';
-  function set(html){root.innerHTML=tabs()+html;root.querySelectorAll(".table-wrap").forEach(w=>{const t=w.querySelector("table");if(!t)return;const i=document.createElement("input");i.type="search";i.className="ux-search";i.placeholder="بحث في القائمة…";w.before(i);i.oninput=()=>t.querySelectorAll("tbody tr").forEach(r=>r.hidden=!r.textContent.toLowerCase().includes(i.value.trim().toLowerCase()))});root.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{view=b.dataset.view;render().catch(showError)});}
+  function set(html){root.innerHTML=html;root.querySelectorAll(".table-wrap").forEach(w=>{const t=w.querySelector("table");if(!t)return;const i=document.createElement("input");i.type="search";i.className="ux-search";i.placeholder="بحث في القائمة…";w.before(i);i.oninput=()=>t.querySelectorAll("tbody tr").forEach(r=>r.hidden=!r.textContent.toLowerCase().includes(i.value.trim().toLowerCase()))});root.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{view=b.dataset.view;render().catch(showError)});}
   function showError(e){console.error(e);root.insertAdjacentHTML("afterbegin",'<div class="panel-card error">'+esc(e.message||"حدث خطأ")+'</div>');}
   async function load(){
     [suppliers,materials,prices,orders,balances]=await Promise.all([
