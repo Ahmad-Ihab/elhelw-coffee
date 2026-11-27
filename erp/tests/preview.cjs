@@ -6,7 +6,7 @@ const {chromium} = require("playwright-core");
 async function main() {
   const [file, executable] = process.argv.slice(2);
   assert.ok(file && executable,"Pass the offline HTML and Chromium executable paths");
-  const browser = await chromium.launch({executablePath:executable,args:["--no-sandbox","--disable-dev-shm-usage","--no-zygote","--single-process"]});
+  const browser = await chromium.launch({executablePath:executable,args:["--no-sandbox","--disable-dev-shm-usage"]});
   try {
     const page = await browser.newPage({offline:true,viewport:{width:393,height:873}});
     const outbound = [];
