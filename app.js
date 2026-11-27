@@ -4,6 +4,7 @@
   const configured = cfg.SUPABASE_URL && !cfg.SUPABASE_URL.includes("YOUR_PROJECT") &&
     cfg.SUPABASE_PUBLISHABLE_KEY && !cfg.SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE");
   const $ = (id) => document.getElementById(id);
+  let erpAvailable = false;
   let sb, sessionUser, profile, distributor, activeTab = "dashboard";
   const adminTabs = [["dashboard","الرئيسية"],["people","دليل الأفراد"],["distributors","الموزعون"],["commissions","العمولات"],["products","المنتجات والأسعار"],["inventory","المخزون"],["cafes","الكافيهات"],["orders","الطلبيات"],["finance","الحسابات"],["returns","المرتجعات"],["productionCalculator","حاسبة الإنتاج"],["procurement","الموردون والمشتريات"],["adminTools","أدوات الإدارة"],["onlineStock","مخزون الأونلاين"],["sampleInventory","مخزون العينات"],["profile","ملفي الشخصي"]];
   const distTabs = [["dashboard","الرئيسية"],["inventory","مخزوني"],["cafes","الكافيهات"],["orders","الطلبيات"],["samples","العينات"],["finance","حساباتي"],["returns","المرتجعات"],["profile","ملفي الشخصي"]];
@@ -63,6 +64,10 @@
     $("welcome-subtitle").textContent=profile.role==="admin"?"إدارة شبكة الموزعين والمبيعات والمخزون.":"متابعة مخزونك وكافيهاتك وطلبياتك.";
     $("refresh-btn").onclick=render;
     renderTabs();await render();initPush().catch(console.warn);
+    sb.rpc("elhelw_erp_available").then(({data,error})=>{
+      if(error && error.code!=="PGRST202") console.warn("ERP",error.message);
+      if(data===true && sessionUser?.id===user.id){erpAvailable=true;renderTabs();}
+    }).catch(console.warn);
   }
   const groupsAdmin=[["المبيعات","cart",["orders","cafes","products","returns"]],["المصنع","factory",["roasting","recipes","factory","productionCalculator"]],["المخازن","box",["inventory","rawStock","packaging","onlineStock","sampleInventory"]],["الحسابات","wallet",["finance","commissions"]],["التوزيع","truck",["distributors","people"]],["المشتريات","clipboard",["procurement","materials","supplierOrders"]],["الإدارة","settings",["adminTools"]]];
   const groupsDist=[["الطلبيات","cart",["orders","returns"]],["مخزوني","box",["inventory","samples"]],["الكافيهات","coffee",["cafes"]],["حساباتي","wallet",["finance"]]];
@@ -79,8 +84,9 @@
     goScreen("dashboard");return true;
   };
   function renderTabs(){
-    const admin=profile.role==="admin",tabs=admin?adminTabs:distTabs,groups=admin?groupsAdmin:groupsDist;
-    const labels=Object.fromEntries([...tabs,["roasting","التحميص"],["recipes","التوليفات"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"],["materials","الخامات والأسعار"],["supplierOrders","طلبيات الموردين"],["reports","التقارير"],["chat","المحادثات"],["notifications","الإشعارات"]]);
+    const admin=profile.role==="admin",tabs=admin?adminTabs:distTabs,groups=[...(admin?groupsAdmin:groupsDist)];
+    if(erpAvailable)groups.push(["تخطيط موارد الشركة","factory",["erpWorkspace"]]);
+    const labels=Object.fromEntries([...tabs,["erpWorkspace","عمليات الشركة"],["roasting","التحميص"],["recipes","التوليفات"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"],["materials","الخامات والأسعار"],["supplierOrders","طلبيات الموردين"],["reports","التقارير"],["chat","المحادثات"],["notifications","الإشعارات"]]);
     const group=groups.find(g=>g[2].includes(activeTab)), selected=groups.find(g=>g[0]===expandedGroup);
     const home=activeTab==="dashboard", menu=activeTab==="group";
     document.querySelector(".welcome")?.classList.toggle("hidden",!home);
@@ -170,6 +176,10 @@
     if(profile && !profileComplete() && activeTab!=="profile" && !(profile.role==="admin"&&activeTab==="people")){activeTab="profile";renderTabs();return profilePage();}
     try{
       if(activeTab==="dashboard"||activeTab==="group")return setContent("");
+      if(activeTab==="erpWorkspace" && erpAvailable){
+        setContent('<section id="erp-workspace"></section>');
+        return await window.renderElhelwERP($("erp-workspace"),sb,sessionUser.id);
+      }
       if(activeTab==="reports")return dashboard();
       if(activeTab==="products")return products();
       if(activeTab==="commissions")return commissions();
@@ -416,16 +426,16 @@
       try{
         const {data,error}=await sb.functions.invoke("woocommerce-stock-read",{body:{}});
         if(error)throw error;
-        if(!data||!Array.isArray(data.products))throw new Error(data?.error||"استجابة غير متوقعة من خدمة مخزون الأونلاين.");
+        if(data?.source!=="central_inventory" || !Array.isArray(data.products) || data.products.length!==24 || new Set(data.products.map(p=>p.sku)).size!==24 || data.products.some(p=>![p.stock_quantity,p.reserved,p.available].every(Number.isSafeInteger) || p.available<0 || p.stock_quantity!==p.reserved+p.available))throw new Error(data?.error||"استجابة غير متوقعة من خدمة مخزون الأونلاين.");
         const products=data.products;
         excelBtn.disabled=data.source!=="central_inventory"||products.length!==24;excelBtn.onclick=async()=>{excelBtn.disabled=true;try{await exportOnlineStockExcel(products,data.fetched_at)}catch(e){fail(e)}finally{excelBtn.disabled=false}};
         exportBtn.disabled=!products.length;exportBtn.onclick=async()=>{exportBtn.disabled=true;try{await exportOnlineStockPdf(products,data.fetched_at)}catch(e){fail(e)}finally{exportBtn.disabled=false}};
         const body=products.map(p=>'<tr><td>'+esc(p.name||"-")+'</td><td>'+esc(p.sku||"-")+'</td><td>'+esc(p.size||"-")+'</td><td><strong>'+qty(p.stock_quantity)+'</strong></td><td>'+esc(p.stock_status||"-")+'</td><td>'+esc(p.type||"-")+'</td></tr>').join("");
         state.innerHTML='<div class="hint">آخر مزامنة: '+esc(new Date(data.fetched_at).toLocaleString("ar-EG"))+' · '+products.length+' صنف</div>'+
-          (products.length?table(["المنتج","SKU","الحجم","الكمية","الحالة","النوع"],body):'<div class="empty">لم يتم العثور على منتجات لها إدارة مخزون مفعّلة في WooCommerce.</div>');
+          (products.length?table(["المنتج","SKU","الحجم","الكمية","الحالة","النوع"],body):'<div class="empty">لا توجد أصناف في المخزون المركزي.</div>');
       }catch(e){
         console.error(e);
-        state.innerHTML='<div class="error">تعذر قراءة مخزون WooCommerce: '+esc(e.message||"خطأ غير معروف")+'</div><p class="hint">تأكد من إعداد أسرار WooCommerce في Supabase، ومن صلاحية مفاتيح REST API للقراءة.</p>';
+        state.innerHTML='<div class="error">تعذر قراءة مخزون WooCommerce: '+esc(e.message||"خطأ غير معروف")+'</div><p class="hint">راجع اتصال خدمة المخزون المركزي وصلاحية مفتاح القراءة.</p>';
       }finally{if(btn){btn.disabled=false;btn.textContent="تحديث من الموقع ↻";}}
     }
     await loadOnlineStock();

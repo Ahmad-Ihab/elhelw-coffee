@@ -12,43 +12,6 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: corsHeaders });
 }
 
-function sizeLabel(product: any): string {
-  const attrs = Array.isArray(product.attributes)
-    ? product.attributes.map((a: any) => [a.name, a.option].filter(Boolean).join(": ")).join(" · ")
-    : "";
-  const text = [product.name, product.sku, attrs].filter(Boolean).join(" ");
-  const normalized = text.replace(/[٠-٩]/g, (d: string) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
-  const match = normalized.match(/(?:^|\D)(50|100|200)\s*(?:g|gm|gr|gram|grams|جم|جرام)(?:\b|$)/i);
-  return match ? match[1] + " جم" : (attrs || "-");
-}
-
-async function wooGet(base: string, path: string, auth: string) {
-  const response = await fetch(base + "/wp-json/wc/v3/" + path, {
-    method: "GET",
-    headers: { Authorization: auth, Accept: "application/json" },
-    signal: AbortSignal.timeout(25000),
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    let detail = "";
-    try { detail = JSON.parse(text)?.message || ""; } catch { /* ignore */ }
-    throw new Error("WooCommerce API returned " + response.status + (detail ? ": " + detail : ""));
-  }
-  try { return JSON.parse(text); }
-  catch { throw new Error("WooCommerce returned an invalid JSON response."); }
-}
-
-async function fetchAllProducts(base: string, auth: string) {
-  const all: any[] = [];
-  for (let page = 1; page <= 50; page++) {
-    const batch = await wooGet(base, "products?status=publish&per_page=100&page=" + page + "&orderby=id&order=asc", auth);
-    if (!Array.isArray(batch)) throw new Error("Unexpected WooCommerce products response.");
-    all.push(...batch);
-    if (batch.length < 100) break;
-  }
-  return all;
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -73,58 +36,18 @@ Deno.serve(async (req: Request) => {
       .from("profiles").select("role").eq("id", userData.user.id).single();
     if (profileError || profile?.role !== "admin") return json({ error: "Admin access required." }, 403);
 
-    const storeUrl = (Deno.env.get("WOOCOMMERCE_STORE_URL") || "").trim().replace(/\/+$/, "");
-    const consumerKey = Deno.env.get("WOOCOMMERCE_CONSUMER_KEY") || "";
-    const consumerSecret = Deno.env.get("WOOCOMMERCE_CONSUMER_SECRET") || "";
-    if (!storeUrl || !consumerKey || !consumerSecret) {
-      return json({ error: "WooCommerce credentials are not configured in Supabase Edge Function secrets." }, 503);
-    }
-    const parsed = new URL(storeUrl);
-    if (parsed.protocol !== "https:") return json({ error: "The WooCommerce store URL must use HTTPS." }, 400);
-
-    const auth = "Basic " + btoa(consumerKey + ":" + consumerSecret);
-    const parents = await fetchAllProducts(storeUrl, auth);
-    const products: any[] = [];
-
-    for (const parent of parents) {
-      if (parent.type === "variable") {
-        if (parent.manage_stock && parent.stock_quantity !== null && parent.stock_quantity !== undefined) {
-          products.push({
-            id: parent.id, parent_id: null, name: parent.name, sku: parent.sku || "",
-            size: sizeLabel(parent), type: "variable-parent",
-            stock_quantity: Number(parent.stock_quantity), stock_status: parent.stock_status || "unknown",
-          });
-          continue;
-        }
-        for (let page = 1; page <= 20; page++) {
-          const variations = await wooGet(storeUrl, "products/" + parent.id + "/variations?per_page=100&page=" + page, auth);
-          if (!Array.isArray(variations)) throw new Error("Unexpected WooCommerce variations response.");
-          for (const v of variations) {
-            const managed = v.manage_stock === true || (v.stock_quantity !== null && v.stock_quantity !== undefined);
-            if (!managed) continue;
-            const attrs = Array.isArray(v.attributes) ? v.attributes : [];
-            const attrText = attrs.map((a: any) => a.option || a.name).filter(Boolean).join(" / ");
-            products.push({
-              id: v.id, parent_id: parent.id,
-              name: [parent.name, attrText].filter(Boolean).join(" — "),
-              sku: v.sku || parent.sku || "", size: sizeLabel({ ...v, name: attrText || parent.name }),
-              type: "variation", stock_quantity: Number(v.stock_quantity ?? 0),
-              stock_status: v.stock_status || "unknown",
-            });
-          }
-          if (variations.length < 100) break;
-        }
-      } else if (parent.manage_stock === true || (parent.stock_quantity !== null && parent.stock_quantity !== undefined)) {
-        products.push({
-          id: parent.id, parent_id: null, name: parent.name, sku: parent.sku || "",
-          size: sizeLabel(parent), type: parent.type || "simple",
-          stock_quantity: Number(parent.stock_quantity ?? 0), stock_status: parent.stock_status || "unknown",
-        });
-      }
-    }
-
-    products.sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"));
-    return json({ source: "WooCommerce", fetched_at: new Date().toISOString(), count: products.length, products });
+    const key = Deno.env.get("ELHELW_INVENTORY_KEY") || "";
+    if (!/^[a-f0-9]{64}$/.test(key)) return json({error:"Central inventory key is missing or invalid."},503);
+    const response = await fetch("https://elhelwcoffee.com/wp-json/elhelw/v1/app-inventory",{headers:{"X-Elhelw-Inventory-Key":key,Accept:"application/json"},redirect:"error",signal:AbortSignal.timeout(25000)});
+    if(!response.ok) return json({error:"Central inventory API returned "+response.status},502);
+    const data=await response.json();
+    const expected=new Set(["PL-L","PL-M","PL-D","BL-L","BL-M","BL-D","FR","HZ"].flatMap(t=>["050","100","200"].map(w=>"EL-"+t+"-"+w)));
+    if(data.enabled!==true||data.source!=="central_inventory"||!Array.isArray(data.items)||data.items.length!==24)throw Error("Invalid central inventory response");
+    const products=data.items.map((i:any)=>{
+      if(!expected.delete(i.code)||typeof i.name!=="string"||Number(i.weight)!==Number(i.code.slice(-3))||![i.stock,i.reserved,i.available].every(Number.isSafeInteger)||i.stock<0||i.reserved<0||i.available<0||i.available!==i.stock-i.reserved)throw Error("Invalid central inventory item");
+      return {id:i.code,name:i.name,sku:i.code,size:i.weight+" جم",stock_quantity:i.stock,reserved:i.reserved,available:i.available,stock_status:"المتاح: "+i.available,type:"المحجوز: "+i.reserved};
+    });
+    return json({source:"central_inventory",fetched_at:data.fetched_at,count:products.length,products});
   } catch (error) {
     console.error("woocommerce-stock-read:", error);
     return json({ error: error instanceof Error ? error.message : "Unexpected server error." }, 500);
