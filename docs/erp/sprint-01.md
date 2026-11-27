@@ -1,5 +1,5 @@
 # Elhelw ERP — Sprint 1 foundation
-Status: draft, not deployed.
+The development branch has an isolated acceptance build. See [the acceptance guide](acceptance.md).
 Single company; incremental migration; preserve legacy application and data.
 ## Acceptance gates
 - Separate test database; no production writes.

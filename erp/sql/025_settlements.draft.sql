@@ -5,14 +5,15 @@ alter table erp.sales_returns add column return_lot_id uuid references erp.lots;
 create function erp.return_direct(p_line uuid,p_qty numeric,p_location uuid,p_reason text,p_date date)
 returns uuid language plpgsql set search_path='' as $$
 declare line erp.sales_invoice_lines%rowtype; order_row erp.sales_orders%rowtype; v erp.vouchers%rowtype;
-  original erp.delivery_costs%rowtype; item uuid; original_lot erp.lots%rowtype; qty_before numeric; cost numeric; refund numeric;
+  original erp.delivery_costs%rowtype; item uuid; original_lot erp.lots%rowtype; qty_before numeric; commission numeric; cost numeric; refund numeric;
   ret uuid; doc uuid; journal uuid; lot uuid; period uuid;
 begin
-  perform erp.require_permission('sales.manage');
   select * into strict line from erp.sales_invoice_lines where id=p_line for update;
   select o.* into strict order_row from erp.sales_invoices i join erp.sales_orders o on o.id=i.order_id join erp.channels c on c.id=o.channel_id
-    where i.id=line.invoice_id and c.fulfillment='direct' and o.distributor_id is null;
-  perform id from erp.sales_invoices where id=line.invoice_id for update;
+    where i.id=line.invoice_id and c.fulfillment in ('direct','distributor');
+  perform erp.require_permission(case when order_row.distributor_id is null then 'sales.manage' else 'distribution.manage' end);
+  perform id from erp.sales_invoices where id=line.invoice_id and invoice_date<=p_date for update;
+  if not found then raise exception 'Return date precedes invoice';end if;
   select * into strict original from erp.delivery_costs where delivery_line_id=line.delivery_line_id;
   select * into strict original_lot from erp.lots where id=original.lot_id;
   select coalesce(sum(quantity),0) into qty_before from erp.sales_return_lines where invoice_line_id=p_line;
@@ -30,7 +31,9 @@ begin
   perform erp.post_stock_value(doc,original_lot.item_id,lot,p_location,p_qty,cost,erp.posting_account('cogs'),period,p_date);
   journal:=erp.post_pair(p_date,'credit_note',ret,'Sales credit note',erp.posting_account('sales'),erp.posting_account('receivables'),refund);
   update erp.sales_returns set stock_document_id=doc,journal_entry_id=journal where id=ret;
-  insert into erp.sales_return_lines(return_id,invoice_line_id,quantity,refund_amount,restored_cost) values(ret,p_line,p_qty,refund,cost);
+  commission:=round(line.commission_amount*(qty_before+p_qty)/line.quantity,8)-round(line.commission_amount*qty_before/line.quantity,8);
+  if commission>0 then perform erp.post_pair(p_date,'commission_return',ret,'Reverse commission',erp.posting_account('commission_payable'),erp.posting_account('commission_expense'),commission);end if;
+  insert into erp.sales_return_lines(return_id,invoice_line_id,quantity,refund_amount,restored_cost,commission_reversal) values(ret,p_line,p_qty,refund,cost,commission);
   return ret;
 end $$;
 

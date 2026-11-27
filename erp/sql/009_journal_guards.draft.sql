@@ -25,7 +25,13 @@ if new.status='posted' then
  if n<2 or balance<>0 then raise exception 'Unbalanced journal'; end if;
  perform a.id from erp.accounts a where a.id in (select account_id from erp.journal_lines where entry_id=new.id) order by a.id for share;
  if exists(select 1 from erp.journal_lines l join erp.accounts a on a.id=l.account_id where l.entry_id=new.id and (not a.active or not a.posting_allowed)) then raise exception 'Invalid posting account'; end if;
- if new.reversal_of is not null then raise exception 'Reversal API not implemented'; end if;
+ if new.reversal_of is not null then
+   if not exists(select from erp.journal_entries where id=new.reversal_of and status='posted' and reversal_of is null)
+    or exists(select account_id,sum(debit),sum(credit) from erp.journal_lines where entry_id=new.id group by account_id
+      except select account_id,sum(credit),sum(debit) from erp.journal_lines where entry_id=new.reversal_of group by account_id)
+    or exists(select account_id,sum(credit),sum(debit) from erp.journal_lines where entry_id=new.reversal_of group by account_id
+      except select account_id,sum(debit),sum(credit) from erp.journal_lines where entry_id=new.id group by account_id) then raise exception 'Reversal mismatch'; end if;
+ end if;
  new.posted_at:=now();
 elsif new.posted_at is not null then raise exception 'Draft cannot have posting timestamp';
 end if;

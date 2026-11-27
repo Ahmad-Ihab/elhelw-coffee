@@ -7,8 +7,16 @@ begin
  case p_action
  when 'account' then
   insert into erp.accounts(code,name,kind) values(p->>'code',p->>'name',p->>'kind') returning id into obj;
+ when 'route' then
+  if not exists(select from erp.channels where id=(p->>'channel')::uuid and fulfillment='distributor')
+   or not exists(select from erp.treasuries where id=(p->>'treasury')::uuid and active and kind='advance') then raise exception 'Distributor channel and dedicated custody account required'; end if;
+  insert into erp.distributor_routes values((p->>'distributor')::uuid,p->>'name',(p->>'channel')::uuid,(p->>'treasury')::uuid);
+ when 'commission' then
+  insert into erp.channel_commissions values((p->>'channel')::uuid,(p->>'item')::uuid,now(),p->>'kind',(p->>'rate')::numeric);
+ when 'pay_component' then
+  insert into erp.payroll_accounts(component,kind,account_id,payable_id) values(p->>'name',p->>'kind',(p->>'account')::uuid,(p->>'payable')::uuid);
  when 'posting_account' then
-  if (p->>'purpose') not in ('opening_equity','goods_received_unbilled','payables','cogs','receivables','sales','direct_absorption','overhead_absorption','abnormal_loss') then raise exception 'Invalid account purpose'; end if;
+  if (p->>'purpose') not in ('opening_equity','goods_received_unbilled','freight_clearing','payables','cogs','receivables','sales','direct_absorption','overhead_absorption','abnormal_loss','payroll_payable','commission_expense','commission_payable','maintenance_expense','maintenance_clearing') then raise exception 'Invalid account purpose'; end if;
   insert into erp.posting_accounts values(p->>'purpose',(p->>'account')::uuid) on conflict(purpose) do update set account_id=excluded.account_id;
  when 'period' then
   insert into erp.fiscal_periods(starts_on,ends_on) values((p->>'start')::date,(p->>'end')::date) returning id into obj;
@@ -20,9 +28,9 @@ begin
  when 'mapping' then
   insert into erp.legacy_item_map values(p->>'source_table',p->>'source_key',(p->>'item')::uuid);
  when 'supplier' then
-  insert into erp.suppliers(code,name) values(p->>'code',p->>'name') returning id into obj;
+  insert into erp.suppliers(code,name,legacy_id) values(p->>'code',p->>'name',(p->>'legacy_id')::uuid) returning id into obj;
  when 'customer' then
-  insert into erp.customers(code,name) values(p->>'code',p->>'name') returning id into obj;
+  insert into erp.customers(code,name,legacy_cafe_id) values(p->>'code',p->>'name',(p->>'legacy_id')::uuid) returning id into obj;
  when 'channel' then
   if not exists(select from erp.locations where id=(p->>'location')::uuid and kind='channel' and active) then raise exception 'Channel location required'; end if;
   insert into erp.channels(code,name,location_id,fulfillment) values(p->>'code',p->>'name',(p->>'location')::uuid,p->>'kind') returning id into obj;
@@ -33,6 +41,9 @@ begin
    values((p->>'list_id')::uuid,(p->>'item')::uuid,(p->>'price')::numeric,coalesce((p->>'effective')::timestamptz,now())) returning id into obj;
  when 'treasury' then
   insert into erp.treasuries(account_id,name,kind) values((p->>'account')::uuid,p->>'name',p->>'kind') returning id into obj;
+ when 'replenishment' then
+  insert into erp.replenishment_rules values((p->>'item')::uuid,(p->>'location')::uuid,(p->>'safety')::numeric,(p->>'reorder')::numeric,(p->>'target')::numeric,(p->>'maximum')::numeric,(p->>'lead')::integer)
+   on conflict(item_id,location_id) do update set safety_stock=excluded.safety_stock,reorder_point=excluded.reorder_point,target_stock=excluded.target_stock,maximum_stock=excluded.maximum_stock,lead_days=excluded.lead_days;
  when 'approval_rule' then
   if jsonb_typeof(p->'steps') is distinct from 'array' or jsonb_array_length(p->'steps')=0 then raise exception 'Approval steps required'; end if;
   insert into erp.approval_rules(document_type,minimum_amount) values('purchase',(p->>'minimum')::numeric) returning id into obj;
@@ -40,6 +51,10 @@ begin
    pos:=pos+1;
    insert into erp.approval_rule_steps values(obj,pos,(line->>'role')::uuid);
   end loop;
+ when 'planning_recipe' then
+  if not exists(select from erp.bom_versions v join erp.boms b on b.id=v.bom_id where v.id=(p->>'recipe')::uuid and v.status='approved' and b.output_item_id=(p->>'item')::uuid) then raise exception 'Approved recipe for this output required';end if;
+  insert into erp.planning_recipes values((p->>'item')::uuid,(p->>'location')::uuid,(p->>'recipe')::uuid)
+   on conflict(item_id,location_id) do update set version_id=excluded.version_id;
  when 'recipe' then
   if jsonb_typeof(p->'components') is distinct from 'array' or jsonb_array_length(p->'components')=0 then raise exception 'Components required'; end if;
   insert into erp.boms(code,name,output_item_id) values(p->>'code',p->>'name',(p->>'item')::uuid) returning id into recipe;

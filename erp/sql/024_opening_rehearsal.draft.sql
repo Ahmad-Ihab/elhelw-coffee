@@ -6,7 +6,7 @@ create table erp.opening_runs (
   expected_value numeric(24,8) not null check(expected_value>=0),
   expected_quantities jsonb not null check(jsonb_typeof(expected_quantities)='object'),
   status text not null default 'draft' check(status in ('draft','posted')),
-  posted_by uuid references auth.users, posted_at timestamptz
+  posted_by uuid references auth.users, posted_at timestamptz, review_snapshot jsonb
 );
 create table erp.opening_rows (
   run_id uuid references erp.opening_runs, source_table text not null, source_key text not null,
@@ -42,11 +42,11 @@ with mapped as (
   select coalesce(jsonb_object_agg(base_unit,qty),'{}'::jsonb) quantities from
     (select base_unit,sum(quantity) qty from mapped group by base_unit) by_unit
 )
-select jsonb_build_object('reference',b.reference,'status',b.status,'lines',(select count(*) from mapped),
+select coalesce(b.review_snapshot,jsonb_build_object('reference',b.reference,'status',b.status,'lines',(select count(*) from mapped),
   'value',coalesce((select sum(total_value) from mapped),0),'quantities',totals.quantities,
   'problems',coalesce((select jsonb_agg(to_jsonb(p) order by source_key,lot_code) from problems p where reason is not null),'[]'::jsonb),
   'matches',b.expected_lines=(select count(*) from mapped) and b.expected_value=coalesce((select sum(total_value) from mapped),0)
-      and b.expected_quantities=totals.quantities and not exists(select from problems where reason is not null))
+      and b.expected_quantities=totals.quantities and not exists(select from problems where reason is not null)))
 from erp.opening_runs b cross join totals where b.id=p_run
 $$;
 create function erp.post_opening(p_run uuid) returns jsonb language plpgsql set search_path='' as $$
@@ -75,7 +75,7 @@ begin
     perform erp.post_stock_value(d,r.item_id,l,r.destination,r.quantity,r.total_value,offset_id,period,b.as_of);
   end loop;
   if exists(select from erp.inventory_reconciliation where not reconciled) then raise exception 'Opening ledger mismatch'; end if;
-  update erp.opening_runs set status='posted',posted_by=auth.uid(),posted_at=now() where id=p_run;
+  update erp.opening_runs set status='posted',review_snapshot=review||jsonb_build_object('status','posted'),posted_by=auth.uid(),posted_at=now() where id=p_run;
   insert into erp.audit_log(actor_id,action,entity_type,entity_id,after_data) values(auth.uid(),'migration.open','opening_run',p_run::text,review);
   return jsonb_build_object('posted',true,'reference',b.reference);
 end $$;

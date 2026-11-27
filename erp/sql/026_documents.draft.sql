@@ -14,20 +14,28 @@ begin
   end loop;
   return doc;
 end $$;
-create function erp.create_direct_order(p_channel uuid,p_customer uuid,p_code text,p_lines jsonb) returns uuid language plpgsql set search_path='' as $$
-declare doc uuid; line record; price numeric;
+create function erp.create_direct_order(p_channel uuid,p_customer uuid,p_code text,p_lines jsonb,p_distributor uuid default null) returns uuid language plpgsql set search_path='' as $$
+declare doc uuid; line record; price numeric; sale_line uuid; loc uuid;
 begin
-  perform erp.require_permission('sales.manage');
-  perform id from erp.channels where id=p_channel and fulfillment='direct' for share;
+  perform erp.require_permission(case when p_distributor is null then 'sales.manage' else 'distribution.manage' end);
+  select location_id into loc from erp.channels where id=p_channel and ( (p_distributor is null and fulfillment='direct') or
+   (fulfillment='distributor' and exists(select from erp.distributor_routes r where r.distributor_id=p_distributor and r.channel_id=p_channel))) for share;
   if not found or not exists(select from erp.customers where id=p_customer and active) or nullif(trim(p_code),'') is null
     or jsonb_typeof(p_lines) is distinct from 'array' or jsonb_array_length(p_lines)=0 then raise exception 'Direct channel, customer, order number and lines required'; end if;
-  insert into erp.sales_orders(channel_id,customer_id,code,status) values(p_channel,p_customer,trim(p_code),'confirmed') returning id into doc;
+  insert into erp.sales_orders(channel_id,customer_id,distributor_id,code,status) values(p_channel,p_customer,p_distributor,trim(p_code),'confirmed') returning id into doc;
   for line in select * from jsonb_to_recordset(p_lines) x(item uuid,qty numeric,list_id uuid,discount numeric) loop
     if not exists(select from erp.items where id=line.item and active and (base_unit<>'EA' or line.qty=trunc(line.qty))) or line.qty<>round(line.qty,6)
       or line.discount<>round(line.discount,8) then raise exception 'Invalid sales line'; end if;
     select l.price into strict price from erp.price_list_lines l join erp.price_lists h on h.id=l.list_id where l.item_id=line.item and l.list_id=line.list_id and
       (h.channel_id=p_channel or h.channel_id is null) and l.effective_from<=now() order by l.effective_from desc limit 1;
-    insert into erp.sales_order_lines(order_id,item_id,quantity,unit_price,discount) values(doc,line.item,line.qty,price,coalesce(line.discount,0));
+    insert into erp.sales_order_lines(order_id,item_id,quantity,unit_price,discount) values(doc,line.item,line.qty,price,coalesce(line.discount,0)) returning id into sale_line;
+    if p_distributor is not null then
+      insert into erp.sale_commission_snapshot select sale_line,c.kind,c.rate,case when c.kind='per_kg' then erp.mass_kg(i,1) else 0 end
+        from erp.channel_commissions c join erp.items i on i.id=c.item_id where c.channel_id=p_channel and c.item_id=line.item and c.effective_from<=now() order by c.effective_from desc limit 1;
+      if not found then raise exception 'Configure a product commission, including an explicit zero if applicable';end if;
+      if erp.commission_total(sale_line,line.qty,line.qty*price-coalesce(line.discount,0))>line.qty*price-coalesce(line.discount,0) then raise exception 'Commission exceeds net sale';end if;
+    end if;
+    perform erp.allocate_order_line(sale_line,loc);
   end loop;
   return doc;
 end $$;

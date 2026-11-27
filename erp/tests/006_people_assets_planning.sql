@@ -1,0 +1,48 @@
+begin;
+do $$
+declare a uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); e uuid; emp uuid; dep uuid; acc uuid; asset0 uuid; period uuid; j uuid;
+  req uuid; run uuid; line jsonb; output jsonb; plan uuid; ticket uuid; item uuid; site uuid; role0 uuid;
+begin
+ insert into auth.users values(a),(b);
+ insert into erp.user_permissions select a,code,true from erp.permissions;
+ insert into erp.user_permissions values(b,'payroll.approve',true);
+ perform set_config('request.jwt.claim.sub',a::text,true);
+ insert into erp.accounts(code,name,kind) values('AS','Asset','asset') returning id into acc;
+ insert into erp.accounts(code,name,kind) values('DE','Expense','expense') returning id into dep;
+ insert into erp.accounts(code,name,kind) values('PAY','Payable','liability') returning id into e;
+ insert into erp.posting_accounts values('payroll_payable',e),('maintenance_expense',dep),('maintenance_clearing',e);
+ insert into erp.fiscal_periods(starts_on,ends_on) values(current_date-1,current_date+1) returning id into period;
+ insert into erp.locations(code,name,kind) values('W','Workshop','storage') returning id into site;
+ emp:=(erp.people_action('employee',jsonb_build_object('code','E','name','Test employee','date',current_date))#>>'{}')::uuid;
+ perform erp.people_action('contract',jsonb_build_object('employee',emp,'start',current_date-10,'salary',500));
+ begin perform erp.people_action('contract',jsonb_build_object('employee',emp,'start',current_date,'salary',500));raise exception 'Unexpected success';
+ exception when others then if sqlerrm<>'Overlapping employment terms' then raise;end if;end;
+ perform erp.people_action('attendance',jsonb_build_object('employee',emp,'start',now()-interval '2 hours'));
+ perform erp.people_action('clock_out',jsonb_build_object('employee',emp,'end',now()));
+ req:=(erp.people_action('leave',jsonb_build_object('employee',emp,'start',current_date+1,'end',current_date+2,'kind','annual'))#>>'{}')::uuid;
+ perform erp.people_action('leave_decide',jsonb_build_object('leave',req,'decision','approved'));
+ insert into erp.payroll_accounts values('Salary','earning',dep,null),('Deduction','deduction',e,null);
+ run:=(erp.people_action('payroll_prepare',jsonb_build_object('period',period,'lines',jsonb_build_array(
+  jsonb_build_object('employee',emp,'component','Salary','amount',500),jsonb_build_object('employee',emp,'component','Deduction','amount',20))))#>>'{}')::uuid;
+ begin perform erp.people_action('payroll_post',jsonb_build_object('run',run));raise exception 'Unexpected success';
+ exception when others then if sqlerrm<>'Independent payroll approval required' then raise;end if;end;
+ perform set_config('request.jwt.claim.sub',b::text,true);perform erp.people_action('payroll_post',jsonb_build_object('run',run));
+ perform set_config('request.jwt.claim.sub',a::text,true);
+ if (select sum(l.credit) from erp.journal_lines l join erp.payroll_runs r on r.journal_entry_id=l.entry_id where r.id=run and l.account_id=e)<>500 then raise exception 'Payroll mismatch';end if;
+ asset0:=(erp.asset_action('asset',jsonb_build_object('code','R','name','Roaster','location',site,'date',current_date,'cost',1100,'residual',100,'months',10,'account',acc,'expense',dep,'accumulated',e))#>>'{}')::uuid;
+ perform erp.asset_action('depreciate',jsonb_build_object('asset',asset0,'period',period,'amount',100));
+ begin perform erp.asset_action('depreciate',jsonb_build_object('asset',asset0,'period',period,'amount',100)); raise exception 'Unexpected success'; exception when unique_violation then null;end;
+ plan:=(erp.asset_action('plan',jsonb_build_object('asset',asset0,'notes','Test','days',7,'date',current_date))#>>'{}')::uuid;
+ ticket:=(erp.asset_action('open',jsonb_build_object('plan',plan,'notes','Service'))#>>'{}')::uuid;
+ perform erp.asset_action('complete',jsonb_build_object('ticket',ticket,'amount',50,'date',current_date));
+ if (select next_due from erp.maintenance_plans where id=plan)<>current_date+7 then raise exception 'Maintenance schedule mismatch';end if;
+ insert into erp.items(sku,name,kind,base_unit) values('BEAN','Coffee','RM','KG') returning id into item;
+ insert into erp.replenishment_rules values(item,site,3,5,20,25,4);
+ run:=erp.run_plan(current_date+10);
+ if (select quantity from erp.planning_suggestions where run_id=run) is distinct from 20::numeric then raise exception 'Planning shortage mismatch'; end if;
+ output:=erp.workspace();
+ if not (output->'choices' ? 'employees') then raise exception 'Staff directory missing'; end if;
+ perform set_config('request.jwt.claim.sub',b::text,true);
+ if erp.workspace()->'choices' ? 'employees' then raise exception 'Employee directory exposed outside HR roles'; end if;
+end $$;
+rollback;

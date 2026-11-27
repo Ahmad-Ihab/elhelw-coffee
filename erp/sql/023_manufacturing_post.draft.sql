@@ -80,6 +80,9 @@ begin
     where x.qty>0 and x.qty=round(x.qty,6) and (i.base_unit<>'EA' or x.qty=trunc(x.qty)) and i.active and i.inventory_account_id is not null
       and l.quality_status='released' and (l.expires_on is null or l.expires_on>=current_date)
       and exists(select from erp.bom_components c where c.version_id=ver.id and c.item_id=i.id);
+  if wo.id is not null and exists(select from erp.operations where work_order_id=wo.id and sequence_no<op.sequence_no) and not exists(
+    select from jsonb_to_recordset(p_inputs) x(lot uuid) where x.lot=(select output_lot_id from erp.operations where work_order_id=wo.id and sequence_no<op.sequence_no order by sequence_no desc limit 1)
+  ) then raise exception 'Linked operation must consume the preceding output lot';end if;
   if count_inputs<>jsonb_array_length(p_inputs) or exists(select from erp.bom_components c where c.version_id=ver.id and
       not exists(select from jsonb_to_recordset(p_inputs) x(lot uuid) join erp.lots l on l.id=x.lot and l.item_id=c.item_id))
      or exists(select from jsonb_to_recordset(p_inputs) x(lot uuid,location uuid) group by x.lot,x.location having count(*)>1) then raise exception 'Invalid or missing recipe component'; end if;
@@ -127,7 +130,7 @@ begin
     if wo.id is not null and exists(select from erp.overhead_applications a join erp.operations o on o.id=a.operation_id where o.work_order_id=wo.id)
       then raise exception 'Overhead already absorbed for this work order'; end if;
     select * into strict cp from erp.cost_periods where period_id=period and status='open' for share;
-    if cp.rate_source_period_id is null or not exists(select from erp.cost_periods prev join erp.fiscal_periods f on f.id=prev.period_id
+    if cp.rate_source_period_id is not null and not exists(select from erp.cost_periods prev join erp.fiscal_periods f on f.id=prev.period_id
       join erp.fiscal_periods cur on cur.id=period where prev.id=cp.rate_source_period_id and prev.status='closed'
         and f.ends_on=cur.starts_on-1) then raise exception 'Approved prior-period overhead rate required'; end if;
     insert into erp.overhead_applications(cost_period_id,operation_id,eligible_output_kg,rate)

@@ -113,16 +113,17 @@ alter table erp.delivery_costs enable row level security;
 create function erp.deliver_direct(p_line uuid,p_lot uuid,p_qty numeric,p_date date)
 returns uuid language plpgsql set search_path='' as $$
 declare line erp.sales_order_lines%rowtype; o erp.sales_orders%rowtype; channel erp.channels%rowtype;
-  delivered numeric; period uuid; dl uuid; d uuid; doc uuid; inv uuid; amount numeric; j uuid;
+  delivered numeric; commission numeric:=0; prev_revenue numeric; period uuid; dl uuid; d uuid; doc uuid; inv uuid; amount numeric; j uuid;
 begin
-  perform erp.require_permission('sales.manage');
   select * into strict line from erp.sales_order_lines where id=p_line;
   select * into strict o from erp.sales_orders where id=line.order_id for update;
   select * into strict channel from erp.channels where id=o.channel_id for share;
-  if channel.fulfillment<>'direct' or o.distributor_id is not null or o.status not in ('confirmed','partial') then raise exception 'Confirmed direct order required'; end if;
+  perform erp.require_permission(case when o.distributor_id is null then 'sales.manage' else 'distribution.manage' end);
+  if not ((channel.fulfillment='direct' and o.distributor_id is null) or (channel.fulfillment='distributor' and exists(select from erp.distributor_routes r where r.channel_id=channel.id and r.distributor_id=o.distributor_id))) or o.status not in ('confirmed','partial') then raise exception 'Confirmed direct order required'; end if;
   select coalesce(sum(quantity),0) into delivered from erp.delivery_lines where order_line_id=p_line;
   if p_qty is null or p_qty<=0 or p_qty<>round(p_qty,6) or p_qty+delivered>line.quantity then raise exception 'Delivery exceeds outstanding quantity'; end if;
   period:=erp.open_period(p_date);
+  perform erp.consume_allocation(p_line,p_lot,channel.location_id,p_qty);
   insert into erp.deliveries(order_id) values(o.id) returning id into d;
   insert into erp.stock_documents(source_type,source_id,idempotency_key,created_by) values('sale_issue',d::text,'delivery:'||d,auth.uid()) returning id into doc;
   perform erp.post_stock_value(doc,line.item_id,p_lot,channel.location_id,-p_qty,null,erp.posting_account('cogs'),period,p_date);
@@ -135,7 +136,12 @@ begin
   insert into erp.sales_invoices(code,order_id,invoice_date) values('INV-'||d,o.id,p_date) returning id into inv;
   j:=erp.post_pair(p_date,'sales_invoice',inv,'Direct sale',erp.posting_account('receivables'),erp.posting_account('sales'),amount);
   update erp.sales_invoices set journal_entry_id=j where id=inv;
-  insert into erp.sales_invoice_lines(invoice_id,delivery_line_id,quantity,net_amount) values(inv,dl,p_qty,amount);
+  if o.distributor_id is not null then
+    prev_revenue:=round(delivered*(line.quantity*line.unit_price-line.discount)/line.quantity,8);
+    commission:=erp.commission_total(p_line,delivered+p_qty,prev_revenue+amount)-erp.commission_total(p_line,delivered,prev_revenue);
+    perform erp.post_pair(p_date,'commission',inv,'Distributor commission',erp.posting_account('commission_expense'),erp.posting_account('commission_payable'),commission);
+  end if;
+  insert into erp.sales_invoice_lines(invoice_id,delivery_line_id,quantity,net_amount,commission_amount) values(inv,dl,p_qty,amount,commission);
   update erp.sales_orders set status=case when exists(select from erp.sales_order_lines l where l.order_id=o.id and l.quantity>
     (select coalesce(sum(x.quantity),0) from erp.delivery_lines x where x.order_line_id=l.id)) then 'partial' else 'delivered' end where id=o.id;
   return inv;

@@ -99,15 +99,17 @@ begin
  line0:=(public.elhelw_erp_workspace()#>>'{choices,return_lines,0,id}')::uuid;
  perform pg_temp.act('sale_return',jsonb_build_object('line',line0,'location',quar,'reason','Return','qty',1,'date',current_date));
  perform pg_temp.act('settle',jsonb_build_object('kind','receipt','invoice',invoice,'treasury',t,'amount',796,'date',current_date));
+ perform pg_temp.act('sale_return',jsonb_build_object('line',line0,'location',quar,'reason','Paid return','qty',1,'treasury',t,'date',current_date));
  perform pg_temp.remember('output',lot_out),pg_temp.remember('input',receivedlot);
 end $$;
 reset role;
 do $$
 begin
+ if exists(select from erp.inventory_account_reconciliation where not reconciled) then raise exception 'Inventory/account mismatch';end if;
  if exists(select from erp.inventory_reconciliation where not reconciled) then raise exception 'Inventory does not reconcile'; end if;
  if (select sum(net) from erp.trial_balance) is distinct from 0::numeric then raise exception 'Trial balance mismatch'; end if;
  if (select net from erp.trial_balance where code='receivables')<>0 or (select net from erp.trial_balance where code='payables')<>0
-    or (select net from erp.trial_balance where code='cogs')<>540 then raise exception 'Settlement or COGS mismatch'; end if;
+    or (select net from erp.trial_balance where code='cogs')<>405 then raise exception 'Settlement or COGS mismatch'; end if;
  if (select count(*) from erp.trace_lot_ancestors(pg_temp.id('output')) where lot_id=pg_temp.id('input'))<>1 then raise exception 'Missing manufacturing genealogy'; end if;
  if has_table_privilege('authenticated','erp.stock_balances','UPDATE') or has_function_privilege('anon','public.elhelw_erp_workspace()','EXECUTE') then raise exception 'Unexpected access grant'; end if;
 end $$;

@@ -2,7 +2,7 @@ name: ERP isolated database tests
 on:
   push:
     branches: [erp-development]
-    paths: ['erp/**', '.github/workflows/erp-tests.yml']
+    paths: ['erp/**', 'erp-workspace.js', 'app.js', 'styles.css', 'supabase/functions/woocommerce-stock-read/**', '.github/workflows/erp-tests.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -54,3 +54,21 @@ jobs:
             echo "Testing $f"
             psql -v ON_ERROR_STOP=1 -f "$f" || exit 1
           done
+      - name: Test concurrent posting and retries
+        run: |
+          npm install --prefix "$RUNNER_TEMP/erp-node" --no-audit --no-fund pg@8.16.3
+          NODE_PATH="$RUNNER_TEMP/erp-node/node_modules" node erp/tests/concurrent.cjs
+      - name: Check ERP web entry points
+        run: |
+          node --check erp-workspace.js
+          node --test erp/tests/central-stock.test.mjs
+          node --check app.js
+      - name: Build standalone acceptance preview
+        run: |
+          npm install --prefix "$RUNNER_TEMP/erp-node" --no-audit --no-fund @electric-sql/pglite@0.3.10 esbuild@0.25.5 playwright-core@1.55.1
+          NODE_PATH="$RUNNER_TEMP/erp-node/node_modules" node erp/preview/build.cjs "$RUNNER_TEMP/Elhelw-ERP-Preview.html"
+          NODE_PATH="$RUNNER_TEMP/erp-node/node_modules" node erp/tests/preview.cjs "$RUNNER_TEMP/Elhelw-ERP-Preview.html" "$(command -v google-chrome)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Elhelw-ERP-Preview
+          path: ${{ runner.temp }}/Elhelw-ERP-Preview.html

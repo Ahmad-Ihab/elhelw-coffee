@@ -30,6 +30,11 @@ begin
  delete from erp.opening_rows where run_id=run and source_key='B-en';
  if not (erp.opening_review(run)->>'matches')::boolean then raise exception 'Opening review mismatch'; end if;
  perform erp.post_opening(run); perform erp.post_opening(run);
+ if not (erp.opening_review(run)->>'matches')::boolean or erp.opening_review(run)->>'status'<>'posted' then raise exception 'Posted opening review lost';end if;
+ data:=jsonb_build_object('reference','CLOSE','as_of',current_date,'balances','[{"kind":"gl","code":"RAW","amount":125},{"kind":"gl","code":"EQ","amount":-125}]'::jsonb);
+ if (erp.cutover_review(data)->>'matches')::boolean is distinct from true then raise exception 'Closing control totals mismatch'; end if;
+ data:=jsonb_set(data,'{balances,0,amount}','124');
+ if (erp.cutover_review(data)->>'matches')::boolean then raise exception 'Incorrect legacy control accepted'; end if;
  if (select count(*) from erp.stock_documents)<>1 or exists(select from erp.inventory_reconciliation where not reconciled)
    or (select total_value from erp.item_valuation where item_id=item)<>125 then raise exception 'Opening posted twice or did not reconcile'; end if;
 end $$;
