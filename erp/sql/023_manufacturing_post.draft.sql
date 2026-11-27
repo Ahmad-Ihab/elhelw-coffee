@@ -52,12 +52,13 @@ begin
 end $$;
 
 -- All component lots are consumed and the resulting lot, genealogy, cost and GL are posted in one transaction.
-create function erp.finish_operation(p_op uuid,p_output_code text,p_output_qty numeric,p_location uuid,p_inputs jsonb,p_date date,p_abnormal numeric)
-returns uuid language plpgsql set search_path='' as $$
+create function erp.finish_operation_outputs(p_op uuid,p_outputs jsonb,p_inputs jsonb,p_date date,p_abnormal numeric)
+returns uuid[] language plpgsql set search_path='' as $$
 declare
   op erp.operations%rowtype; ver erp.bom_versions%rowtype; policy erp.manufacturing_policy%rowtype;
   wo erp.work_orders%rowtype; out_item erp.items%rowtype; itm erp.items%rowtype; valuation erp.item_valuation%rowtype;
   leg record; period uuid; cp erp.cost_periods%rowtype; doc uuid; output uuid; journal uuid;
+  output_row record; output_ids uuid[]:='{}'; p_output_qty numeric; produced numeric:=0; portion numeric;
   available numeric; issued numeric; material numeric:=0; input_kg numeric:=0; output_kg numeric;
   direct numeric; overhead numeric:=0; total numeric; loss numeric; ledger_account uuid; count_inputs int;
 begin
@@ -71,8 +72,14 @@ begin
   select * into strict ver from erp.bom_versions where id=coalesce(op.recipe_version_id,wo.version_id) and status='approved' for share;
   select * into strict policy from erp.manufacturing_policy where version_id=ver.id and stage=op.stage;
   select i.* into strict out_item from erp.boms b join erp.items i on i.id=b.output_item_id where b.id=ver.bom_id and i.active for share of b,i;
-  if p_output_qty is null or p_output_qty<=0 or round(p_output_qty,6)<>p_output_qty or nullif(trim(p_output_code),'') is null
-    or jsonb_typeof(p_inputs) is distinct from 'array' or jsonb_array_length(p_inputs)=0 or p_abnormal is null or p_abnormal<0 or p_abnormal<>round(p_abnormal,8)
+  if jsonb_typeof(p_outputs) is distinct from 'array' or jsonb_array_length(p_outputs)=0 then raise exception 'Output lots required'; end if;
+  if exists(select from jsonb_to_recordset(p_outputs) x(lot_code text,qty numeric,location uuid)
+    where nullif(trim(x.lot_code),'') is null or x.qty is null or x.qty<=0 or x.qty<>round(x.qty,6) or x.location is null
+      or (out_item.base_unit='EA' and x.qty<>trunc(x.qty)))
+    or exists(select from jsonb_to_recordset(p_outputs) x(lot_code text) group by trim(x.lot_code) having count(*)>1)
+    then raise exception 'Invalid or duplicate output lot'; end if;
+  select sum(x.qty) into p_output_qty from jsonb_to_recordset(p_outputs) x(qty numeric);
+  if jsonb_typeof(p_inputs) is distinct from 'array' or jsonb_array_length(p_inputs)=0 or p_abnormal is null or p_abnormal<0 or p_abnormal<>round(p_abnormal,8)
     or (out_item.base_unit='EA' and p_output_qty<>trunc(p_output_qty)) then raise exception 'Invalid production output or inputs'; end if;
   select count(*) into count_inputs from jsonb_to_recordset(p_inputs) x(lot uuid,location uuid,qty numeric)
     join erp.lots l on l.id=x.lot join erp.items i on i.id=l.item_id
@@ -81,7 +88,9 @@ begin
       and l.quality_status='released' and (l.expires_on is null or l.expires_on>=current_date)
       and exists(select from erp.bom_components c where c.version_id=ver.id and c.item_id=i.id);
   if wo.id is not null and exists(select from erp.operations where work_order_id=wo.id and sequence_no<op.sequence_no) and not exists(
-    select from jsonb_to_recordset(p_inputs) x(lot uuid) where x.lot=(select output_lot_id from erp.operations where work_order_id=wo.id and sequence_no<op.sequence_no order by sequence_no desc limit 1)
+    select from jsonb_to_recordset(p_inputs) x(lot uuid) join erp.lots l on l.id=x.lot
+    join lateral (select id,output_lot_id from erp.operations where work_order_id=wo.id and sequence_no<op.sequence_no order by sequence_no desc limit 1) prev
+      on l.producing_operation_id=prev.id or l.id=prev.output_lot_id
   ) then raise exception 'Linked operation must consume the preceding output lot';end if;
   if count_inputs<>jsonb_array_length(p_inputs) or exists(select from erp.bom_components c where c.version_id=ver.id and
       not exists(select from jsonb_to_recordset(p_inputs) x(lot uuid) join erp.lots l on l.id=x.lot and l.item_id=c.item_id))
@@ -94,8 +103,10 @@ begin
     scale as (select a.qty actual,p.qty planned from planned p join actual a using(item_id) order by p.item_id limit 1)
     select from planned p join actual a using(item_id) cross join scale s where a.qty<>round(p.qty*s.actual/s.planned,6)
   ) then raise exception 'Consumption differs from approved component proportions'; end if;
-  perform id from erp.locations where id=p_location and active and kind in ('storage','quarantine') for share;
-  if not found or out_item.inventory_account_id is null then raise exception 'Invalid output location or account'; end if;
+  perform id from erp.locations where id in (select x.location from jsonb_to_recordset(p_outputs) x(location uuid)) order by id for share;
+  if out_item.inventory_account_id is null or exists(select from jsonb_to_recordset(p_outputs) x(location uuid)
+    where not exists(select from erp.locations l where l.id=x.location and l.active and l.kind in ('storage','quarantine')))
+    then raise exception 'Invalid output location or account'; end if;
   period:=erp.open_period(p_date);
   insert into erp.item_valuation values(out_item.id,0,0) on conflict do nothing;
   perform item_id from erp.item_valuation where item_id=out_item.id or item_id in
@@ -103,10 +114,8 @@ begin
   output_kg:=erp.mass_kg(out_item,p_output_qty);
   if output_kg<=0 then raise exception 'Positive output mass required'; end if;
   insert into erp.stock_documents(source_type,source_id,idempotency_key,created_by) values('manufacturing',p_op::text,'operation:'||p_op,auth.uid()) returning id into doc;
-  insert into erp.lots(item_id,lot_code,manufactured_on,expires_on,producing_operation_id)
-    values(out_item.id,trim(p_output_code),p_date,p_date+out_item.shelf_life_days,p_op) returning id into output;
   insert into erp.journal_entries(period_id,entry_date,source_type,source_id,idempotency_key,description,created_by)
-    values(period,p_date,'manufacturing',p_op::text,'operation:'||p_op,'Production '||p_output_code,auth.uid()) returning id into journal;
+    values(period,p_date,'manufacturing',p_op::text,'operation:'||p_op,'Production '||trim(p_outputs->0->>'lot_code'),auth.uid()) returning id into journal;
   for leg in select x.*,l.item_id,l.quality_status,l.expires_on,loc.active,loc.kind from jsonb_to_recordset(p_inputs) x(lot uuid,location uuid,qty numeric)
       join erp.lots l on l.id=x.lot join erp.locations loc on loc.id=x.location order by l.item_id,x.lot,x.location for share of l,loc loop
     if leg.quality_status<>'released' or leg.expires_on<current_date or not leg.active or leg.kind<>'storage' then raise exception 'Input lot unavailable'; end if;
@@ -122,7 +131,6 @@ begin
     if issued>0 then insert into erp.journal_lines(entry_id,account_id,credit) values(journal,itm.inventory_account_id,issued); end if;
     material:=material+issued; input_kg:=input_kg+erp.mass_kg(itm,leg.qty);
   end loop;
-  insert into erp.lot_genealogy select lot_id,output,doc,-sum(quantity_delta) from erp.stock_moves where document_id=doc group by lot_id;
   loss:=input_kg-output_kg;
   if loss<0 or loss>input_kg*policy.maximum_loss_fraction then raise exception 'Production mass outside approved tolerance'; end if;
   select coalesce(sum(amount),0) into direct from erp.operation_costs where operation_id=p_op;
@@ -144,14 +152,33 @@ begin
   if material+direct+overhead>0 then update erp.journal_entries set status='posted' where id=journal;
   else delete from erp.journal_entries where id=journal; end if;
   update erp.item_valuation set quantity=quantity+p_output_qty,total_value=total_value+total where item_id=out_item.id;
-  insert into erp.stock_balances values(out_item.id,output,p_location,p_output_qty);
-  insert into erp.stock_moves(document_id,item_id,lot_id,location_id,quantity_delta,value_delta) values(doc,out_item.id,output,p_location,p_output_qty,total);
+  for output_row in select x.* from jsonb_array_elements(p_outputs) with ordinality v(obj,position)
+    cross join lateral jsonb_to_record(v.obj) x(lot_code text,location uuid,qty numeric) order by v.position loop
+    insert into erp.lots(item_id,lot_code,manufactured_on,expires_on,producing_operation_id)
+      values(out_item.id,trim(output_row.lot_code),p_date,p_date+out_item.shelf_life_days,p_op) returning id into output;
+    output_ids:=array_append(output_ids,output);
+    -- Cumulative rounding keeps every consumed unit and cent accounted for across the split.
+    insert into erp.lot_genealogy(parent_lot_id,child_lot_id,document_id,input_quantity)
+      select lot_id,output,doc,round(-sum(quantity_delta)*(produced+output_row.qty)/p_output_qty,6)
+        -round(-sum(quantity_delta)*produced/p_output_qty,6)
+      from erp.stock_moves where document_id=doc and quantity_delta<0 group by lot_id;
+    portion:=round(total*(produced+output_row.qty)/p_output_qty,8)-round(total*produced/p_output_qty,8);
+    insert into erp.stock_balances values(out_item.id,output,output_row.location,output_row.qty);
+    insert into erp.stock_moves(document_id,item_id,lot_id,location_id,quantity_delta,value_delta)
+      values(doc,out_item.id,output,output_row.location,output_row.qty,portion);
+    produced:=produced+output_row.qty;
+  end loop;
   update erp.stock_documents set status='posted' where id=doc;
   update erp.operations set status='completed',started_at=coalesce(started_at,now()),completed_at=clock_timestamp(),stock_document_id=doc,
-    loss_kg=loss,output_lot_id=output where id=p_op;
+    loss_kg=loss,output_lot_id=output_ids[1] where id=p_op;
   if wo.id is not null then update erp.work_orders set status=case when exists(select from erp.operations where work_order_id=wo.id and status<>'completed')
     then 'running' else 'completed' end where id=wo.id; end if;
-  return output;
+  return output_ids;
 end $$;
+-- Keep the single-lot interface for older app submissions.
+create function erp.finish_operation(p_op uuid,p_output_code text,p_output_qty numeric,p_location uuid,p_inputs jsonb,p_date date,p_abnormal numeric)
+returns uuid language sql set search_path='' as $$
+  select (erp.finish_operation_outputs(p_op,jsonb_build_array(jsonb_build_object('lot_code',p_output_code,'qty',p_output_qty,'location',p_location)),p_inputs,p_date,p_abnormal))[1];
+$$;
 revoke all on all functions in schema erp from public,anon,authenticated;
 commit;

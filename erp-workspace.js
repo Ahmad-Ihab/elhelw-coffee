@@ -30,7 +30,7 @@
     ["التصنيع",[
       fn("linked_order","أمر تشغيل متعدد المراحل","manufacturing.post",[code,qty,many("steps","تسلسل المراحل",[choice("recipe","الوصفة","recipes"),field("direct","تكلفة مباشرة","number",true)])]),
       fn("operation_new","فتح عملية تصنيع","manufacturing.post",[choice("recipe","الوصفة المعتمدة","recipes"),field("code","رقم أمر التشغيل (اختياري)","text",true),qty,field("direct","التكلفة المباشرة","number")]),
-      fn("operation_finish","تسجيل الإنتاج الفعلي","manufacturing.post",[choice("operation","العملية","operations"),lotCode,location,field("qty","كمية الناتج","number"),date,field("abnormal","قيمة الفاقد غير الطبيعي","number"),many("inputs","الخامات المستهلكة",[choice("lot","التشغيلة","released"),location,qty])])
+      fn("operation_finish","تسجيل الإنتاج الفعلي","manufacturing.post",[choice("operation","العملية","operations"),many("outputs","تشغيلات الناتج",[lotCode,location,qty]),date,field("abnormal","قيمة الفاقد غير الطبيعي","number"),many("inputs","الخامات المستهلكة",[choice("lot","التشغيلة","released"),location,qty])])
     ]],
     ["الجودة",[
       fn("inspect_start","فتح فحص","quality.inspect",[choice("lot","التشغيلة","pending_lots")]),

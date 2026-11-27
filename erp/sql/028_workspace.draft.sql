@@ -62,7 +62,10 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object('sku',i.sku,'base_unit',i.base_unit,'required',round(c.required,6),'available',c.available,'shortage',round(c.shortage,6)) order by i.sku),'[]')
   into output_value from erp.component_plan((p->>'item')::uuid,(p->>'location')::uuid,(p->>'qty')::numeric) c join erp.items i on i.id=c.item_id;
  when 'operation_new' then output_value:=to_jsonb(erp.prepare_operation((p->>'recipe')::uuid,p->>'code',(p->>'qty')::numeric,(p->>'direct')::numeric));
- when 'operation_finish' then output_value:=to_jsonb(erp.finish_operation((p->>'operation')::uuid,p->>'lot_code',(p->>'qty')::numeric,(p->>'location')::uuid,p->'inputs',(p->>'date')::date,(p->>'abnormal')::numeric));
+ when 'operation_finish' then
+  if p ? 'outputs' then output_value:=to_jsonb(erp.finish_operation_outputs((p->>'operation')::uuid,p->'outputs',p->'inputs',(p->>'date')::date,(p->>'abnormal')::numeric));
+  else output_value:=to_jsonb(erp.finish_operation((p->>'operation')::uuid,p->>'lot_code',(p->>'qty')::numeric,(p->>'location')::uuid,p->'inputs',(p->>'date')::date,(p->>'abnormal')::numeric));
+  end if;
  when 'transfer' then
   perform erp.require_permission('inventory.transfer');
   lot:=(p->>'lot')::uuid;

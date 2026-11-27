@@ -1,4 +1,4 @@
-const CACHE = "elhelw-coffee-v30";
+const CACHE = "elhelw-coffee-v31";
 const CORE = [
   "./",
   "./index.html",

@@ -83,7 +83,13 @@ begin
  op:=pg_temp.new_id('operation_new',jsonb_build_object('recipe',recipe,'code','WO1','qty',8,'direct',80));
  a:=jsonb_build_object('operation',op,'location',loc,'date',current_date,'lot_code','OUT','qty',7,'abnormal',0,'inputs',jsonb_build_array(jsonb_build_object('lot',receivedlot,'location',loc,'qty',10)));
  perform pg_temp.must_fail('operation_finish',a,'outside approved tolerance');
- lot_out:=pg_temp.new_id('operation_finish',a||'{"qty":8}');
+ a:=a||jsonb_build_object('outputs',jsonb_build_array(jsonb_build_object('lot_code','OUT','location',loc,'qty',5),jsonb_build_object('lot_code','OUT','location',loc,'qty',3)));
+ perform pg_temp.must_fail('operation_finish',a,'duplicate output lot');
+ a:=jsonb_set(a,'{outputs,1,lot_code}','"OUT2"');
+ first_result:=public.elhelw_erp_command('operation_finish',a,op);
+ if first_result<>public.elhelw_erp_command('operation_finish',a,op) or jsonb_array_length(first_result)<>2 then raise exception 'Invalid output split or retry'; end if;
+ lot_out:=(first_result->>0)::uuid;
+ perform pg_temp.remember('other_output',(first_result->>1)::uuid);
  spec:=pg_temp.new_id('spec',jsonb_build_object('stage','roast','name','Roast OK','kind','boolean'));
  inspection:=pg_temp.new_id('inspect_start',jsonb_build_object('lot',lot_out));
  perform pg_temp.act('inspect_record',jsonb_build_object('inspection',inspection,'values',jsonb_build_object(spec::text,true)));
@@ -105,6 +111,9 @@ end $$;
 reset role;
 do $$
 begin
+ if (select input_quantity from erp.lot_genealogy where child_lot_id=pg_temp.id('other_output')) is distinct from 3.75 or
+    (select value_delta from erp.stock_moves where lot_id=pg_temp.id('other_output')) is distinct from 405 or
+    (select quality_status from erp.lots where id=pg_temp.id('other_output')) is distinct from 'pending' then raise exception 'Split cost, trace or independent QC failed';end if;
  if exists(select from erp.inventory_account_reconciliation where not reconciled) then raise exception 'Inventory/account mismatch';end if;
  if exists(select from erp.inventory_reconciliation where not reconciled) then raise exception 'Inventory does not reconcile'; end if;
  if (select sum(net) from erp.trial_balance) is distinct from 0::numeric then raise exception 'Trial balance mismatch'; end if;
