@@ -1,0 +1,56 @@
+name: ERP isolated database tests
+on:
+  push:
+    branches: [erp-development]
+    paths: ['erp/**', '.github/workflows/erp-tests.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: local_test_only
+          POSTGRES_DB: erp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: local_test_only
+      PGDATABASE: erp_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create minimal test-only legacy and auth fixtures
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          create schema auth;
+          create table auth.users(id uuid primary key);
+          create function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
+          create table public.suppliers(id uuid primary key);
+          create table public.cafes(id uuid primary key);
+          create table public.distributors(id uuid primary key);
+          SQL
+      - name: Apply draft schema
+        run: |
+          for f in erp/sql/*.draft.sql; do
+            echo "Applying $f"
+            psql -v ON_ERROR_STOP=1 -f "$f" || exit 1
+          done
+      - name: Execute rollback-only tests
+        run: |
+          for f in erp/tests/*.sql; do
+            echo "Testing $f"
+            psql -v ON_ERROR_STOP=1 -f "$f" || exit 1
+          done
