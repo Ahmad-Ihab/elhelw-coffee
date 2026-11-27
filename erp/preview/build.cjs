@@ -19,10 +19,10 @@ async function main(){
  const script=s=>s.replace(/<\/script/gi,"<\\/script");
  const logo=fs.readFileSync(path.join(root,"assets/brand-logo.svg")).toString("base64");
  const html=`<!doctype html><html lang="ar" dir="rtl"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>بن الحلو · تجربة نظام الشركة</title>
- <style>${read("styles.css").replace(/@import\s+url\([^)]*\);/g,"")}body{padding-bottom:2rem}main{max-width:1080px;margin:auto;padding:1rem}.preview-head{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}.preview-head img{height:3rem}.preview-head label{margin-inline-start:auto}#state{padding:.6rem 0}</style>
+ <style>${read("styles.css").replace(/@import\s+url\([^)]*\);/g,"")}${read("interface.css").replace(/@font-face\s*\{[^}]*\}/g,"")}body{padding-bottom:2rem}main{max-width:1080px;margin:auto;padding:1rem}.preview-head{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}.preview-head img{height:3rem}.preview-head label{margin-inline-start:auto}#state{padding:.6rem 0}</style>
  <main><header class="preview-head"><img alt="بن الحلو" src="data:image/svg+xml;base64,${logo}"><h1>تجربة نظام الشركة</h1><label>حساب التجربة <select id="actor" disabled><option value="1">مسؤول التشغيل</option><option value="2">مراجع الاعتمادات</option></select></label></header>
  <p>بيانات تدريبية على جهازك. إعادة فتح الصفحة تبدأ تجربة جديدة.</p><div id="state" role="status">جارٍ تجهيز قاعدة بيانات التجربة…</div><section id="erp-workspace"></section></main>
- <script>${script(bundle.outputFiles[0].text)}</script><script>${script(read("erp-workspace.js"))}</script>
+ <script>${script(bundle.outputFiles[0].text)}</script><script>${script(read("illustrations.js"))}</script><script>${script(read("erp-workspace.js"))}</script>
  <script type="application/json" id="assets">${script(JSON.stringify(assets))}</script><script>${script(read("erp/preview/start.js"))}</script></html>`;
  fs.writeFileSync(out,html);
 }

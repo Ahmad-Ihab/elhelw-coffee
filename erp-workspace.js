@@ -21,7 +21,9 @@
   const asset = choice("asset","المعدة أو الأصل","assets"), notes = field("notes","وصف العمل");
   const groups = [
     ["المشتريات",[
-      fn("purchase_new","إنشاء أمر شراء","purchases.manage",[code,supplier,many("lines","بنود الشراء",[item,choice("unit","وحدة الشراء (الافتراضي وحدة الصنف)",units,true),field("qty","الكمية بوحدة الشراء","number"),field("price","سعر وحدة الشراء","number")])]),
+      fn("supplier_quote","تسجيل سعر مورد","setup.configure",[supplier,choice("item","الخامة ووحدة التسعير","catalog"),field("price","سعر الوحدة بالجنيه","number")]),
+      fn("quote_book","دليل أسعار الموردين","purchases.manage",[]),
+      fn("purchase_quoted","إنشاء طلبية شراء","purchases.manage",[code,supplier,many("lines","الخامات المطلوبة",[item,field("qty","الكمية بالوحدة المعروضة","number"),field("price","سعر الوحدة بالجنيه","number")])]),
       fn("purchase_submit","إرسال أمر للاعتماد","purchases.manage",[choice("order","أمر الشراء","purchase_drafts")]),
       fn("purchase_decide","مراجعة اعتماد","purchases.approve",[choice("order","أمر الشراء","approvals"),choice("decision","القرار",fixed(["approved","اعتماد"],["rejected","إعادة للمراجعة"]))]),
       fn("purchase_receive","استلام تشغيلة","purchases.receive",[choice("line","البند والكمية المتبقية","purchase_lines"),lotCode,location,qty,date,field("expiry","تاريخ الصلاحية","date",true)]),
@@ -104,10 +106,10 @@
       setup("posting_account","ربط حساب للترحيل",[account,choice("purpose","الاستخدام",fixed(["opening_equity","مقابل الأرصدة الافتتاحية"],["goods_received_unbilled","بضاعة مستلمة غير مفوترة"],["payables","المورّدون"],["freight_clearing","وسيط مصاريف النقل"],["receivables","العملاء"],["sales","إيراد المبيعات"],["cogs","تكلفة المبيعات"],["direct_absorption","تحميل تكلفة مباشرة"],["overhead_absorption","تحميل تكلفة غير مباشرة"],["abnormal_loss","فاقد غير طبيعي"],["payroll_payable","رواتب مستحقة"],["commission_expense","مصروف العمولة"],["commission_payable","عمولات مستحقة"],["maintenance_expense","مصروف صيانة"],["maintenance_clearing","مقابل مصروف الصيانة"]))]),
       setup("period","فترة مالية",[field("start","بداية الفترة","date"),field("end","نهاية الفترة","date")]),
       setup("location","موقع مخزني",[code,name,choice("kind","النوع",fixed(["warehouse","مخزن رئيسي"],["storage","تخزين"],["channel","قناة بيع"],["custody","عهدة"],["quarantine","حجر"]))]),
-      setup("item","صنف",[code,name,choice("kind","نوع الصنف",fixed(["RM","خامة"],["ADD","إضافة"],["GB","خلطة خضراء"],["RB","بن محمص"],["GC","بن مطحون"],["FB","بن منكه"],["PK","مادة تغليف"],["FG","منتج تام"])),choice("unit","الوحدة الأساسية",fixed(["KG","كجم"],["G","جم"],["EA","قطعة"],["L","لتر"],["ML","مل"])),field("weight","وزن الوحدة بالكيلو","number",true),field("days","مدة الصلاحية بالأيام","number",true),account]),
+      setup("item","إضافة خامة أو صنف",[name,field("code","كود الصنف"),choice("kind","نوع الصنف",fixed(["RM","خامة"],["ADD","إضافة"],["GB","خلطة خضراء"],["RB","بن محمص"],["GC","بن مطحون"],["FB","بن منكه"],["PK","مادة تغليف"],["FG","منتج تام"])),choice("unit","الوحدة الأساسية",fixed(["KG","كجم"],["G","جم"],["EA","قطعة"],["L","لتر"],["ML","مل"])),field("weight","وزن الوحدة بالكيلو","number",true),field("days","مدة الصلاحية بالأيام","number",true),account]),
       setup("item_unit","معامل تحويل وحدة صنف",[item,choice("unit","الوحدة البديلة",units),field("factor","عدد الوحدات الأساسية لكل وحدة بديلة","number")]),
       setup("mapping","ربط كود قديم بصنف",[field("source_table","مصدر الكود"),field("source_key","الكود القديم"),item]),
-      setup("supplier","مورّد",[code,name,field("legacy_id","معرّف المورّد القديم","text",true)]),setup("customer","عميل",[code,name,field("legacy_id","معرّف الكافيه القديم","text",true)]),
+      setup("supplier","إضافة مورد",[name,field("code","كود المورد")]),setup("customer","عميل",[code,name,field("legacy_id","معرّف الكافيه القديم","text",true)]),
       setup("channel","قناة بيع",[code,name,location,choice("kind","تنفيذ الطلبات",fixed(["direct","بيع مباشر"],["external","المتجر المركزي"],["distributor","توزيع"]))]),
       setup("price_list","قائمة أسعار",[code,name,choice("channel","قناة البيع","channels",true)]),
       setup("price","تسعير صنف",[item,choice("list_id","قائمة الأسعار","lists"),field("price","سعر الوحدة","number")]),
@@ -148,7 +150,7 @@
       for(const key of keys)cells.append(el("td",["status","stage","quality_status"].includes(key)?states[row[key]]||row[key]||"—":row[key]??"—"));
       body.append(cells);
     }
-    wrap.append(t);return wrap;
+    wrap.append(t);window.elhelwMobileRecords(wrap);return wrap;
   }
   function readFields(parent,fields,choices) {
     const readers=new Map(), controls=new Map();
@@ -184,7 +186,7 @@
       if(def.source){
         const options=typeof def.source==="string"?choices[def.source]||[]:def.source;
         control.add(new Option("اختر",""));
-        for(const opt of options)control.add(new Option(opt.label,opt.id));
+        for(const opt of options)control.add(new Option(def.source==="catalog"?opt.label+" · "+prettyUnit(opt.unit):opt.label,opt.id));
       }else{
         control.type=["reading","signed"].includes(def.type)?"number":def.type;
         if(control.type==="number"){control.step="any";if(!["reading","signed"].includes(def.type)&& !["min","max"].includes(def.key))control.min="0";}
@@ -205,34 +207,193 @@
     for(const def of fields)readers.set(def.key,bind(def));
     return async()=>{const payload={};for(const [key,read] of readers){const value=await read();if(value!==undefined)payload[key]=value;}return payload;};
   }
+  function prepareDefaults(form,action,choices){
+    const controls=form.elements;
+    if(["setup.supplier","setup.item","purchase_quoted"].includes(action)){
+      const prefix={"setup.supplier":"SUP","setup.item":"MAT","purchase_quoted":"PO"}[action];
+      controls.code.value=prefix+"-"+crypto.randomUUID().slice(0,8).toUpperCase();
+    }
+    if(action==="setup.item"){
+      controls.kind.value="RM";controls.unit.value="KG";
+      const defaults={RM:"raw_inventory",ADD:"raw_inventory",PK:"pack_inventory",FG:"finished_inventory"};
+      const sync=()=>{const key=defaults[controls.kind.value]||"wip_inventory";const match=choices.accounts.find(a=>a.label.startsWith(key+" ·"));if(match)controls.account.value=match.id;};
+      controls.kind.onchange=sync;sync();
+    }
+    if(action==="setup.approval_rule")controls.minimum.value="0";
+    if(action==="spec"){
+      const lot=choices.inspection_lots?.find(l=>!choices.spec_coverage?.some(s=>s.stage===l.stage&&(!s.item||s.item===l.item)));
+      if(lot){controls.stage.value=lot.stage;controls.item.value=lot.item;}
+      controls.mandatory.value="true";
+    }
+  }
   async function requestKey(actor,action,payload) {
     const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify([actor,action,payload])));
     const key="erp-pending-"+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
     const id=localStorage.getItem(key)||crypto.randomUUID();localStorage.setItem(key,id);return {key,id};
   }
-  window.renderElhelwERP=async function(root,client,actor){
-    const status=el("p","جارٍ تحميل عمليات الشركة…"),menu=el("div",null,"erp-menu"),work=el("div");
-    status.setAttribute("role","status");root.replaceChildren(status,menu,work);
-    async function refresh(message=""){
-      menu.replaceChildren(); status.textContent="جارٍ تحميل عمليات الشركة…";
-      const {data,error}=await client.rpc("elhelw_erp_workspace");
-      if(!root.isConnected)return;
-      if(error){status.textContent="تعذّر تحميل العمليات. "+error.message;menu.replaceChildren(button("إعادة المحاولة",()=>refresh(message)));return;}
-      status.textContent=message;menu.replaceChildren();work.replaceChildren();
-      for(const [key,label] of reports)if(data.records[key])menu.append(button(label,()=>work.replaceChildren(el("h3",label),table(data.records[key]))));
-      for(const [title,actions] of groups){
-        const allowed=actions.filter(a=>data.permissions.includes(a.perm));if(!allowed.length)continue;
-        const section=el("details");section.append(el("summary",title));menu.append(section);
-        for(const a of allowed)section.append(button(a.title,()=>open(a,data.choices)));
+  const guideStages=[
+    ["supplier","الموردين","مين بيورّد لك؟",["setup.supplier"]],
+    ["materials","الخامات","سجّل البن ومواد التعبئة بوحداتها.",["setup.item","setup.item_unit"]],
+    ["prices","أسعار الموردين","حدّد سعر كل خامة عند المورد.",["supplier_quote","quote_book"]],
+    ["buy","طلبية الشراء","اختار المورد والخامات اللي هتطلبها.",["purchase_quoted","setup.approval_rule","purchase_submit","purchase_decide"]],
+    ["receive","الاستلام","استلم كل بند في مخزنه برقم تشغيلة.",["setup.period","purchase_receive","purchase_bill"]],
+    ["quality","فحص الجودة","حدّد المواصفة، افحص، وبعدها افرج عن التشغيلة.",["spec","inspect_start","inspect_record","inspect_release"]],
+    ["recipe","وصفة الإنتاج","سجّل صنف الناتج، ومكوّناته ونسبة الفاقد.",["setup.item","setup.recipe","component_plan"]],
+    ["factory","التصنيع","افتح أمر التشغيل وسجّل الكميات الفعلية.",["operation_new","linked_order","operation_finish"]],
+    ["goods","المخزون التام","افحص الناتج وانقله لموقع البيع.",["inspect_start","inspect_record","inspect_release","transfer","report:inventory"]]
+  ];
+  const symbols={"المشتريات":"buy","التصنيع":"factory","الجودة":"quality","المخزون":"stock","المبيعات المباشرة":"sales","توزيع المناديب":"delivery","الخزينة":"payment","الحسابات والتكاليف":"finance","الأرصدة الافتتاحية":"audit","شؤون العاملين":"hr","الأصول والصيانة":"asset","تهيئة الشركة":"setup","صلاحيات الموظفين":"access","التقارير":"reports"};
+  const normalize=s=>String(s).normalize("NFKD").replace(/[\u064B-\u065F\u0670]/g,"").replace(/[إأآٱ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه").toLowerCase().trim();
+  const prettyUnit=key=>units.find(u=>u.id===key)?.label||key;
+  const guideActions=()=>{
+    const list=groups.flatMap(([group,actions])=>actions.map((a,i)=>({...a,group,uid:group+"."+i,art:symbols[group]})));
+    for(const [key,label] of reports)list.push({action:"report:"+key,title:label,report:key,group:"التقارير",uid:"report:"+key,art:"reports"});
+    return list;
+  };
+  function entries(w){
+    return guideActions().filter(a=>a.report?w.records[a.report]!==undefined:w.permissions.includes(a.perm));
+  }
+  const pick=(list,id)=>list.find(a=>a.action===id||a.uid===id);
+  function nextStep(w,actions){
+    const c=w.choices, flow=w.flow||{}, has=k=>Boolean(c[k]?.length);
+    const candidate=(id,stage)=>{const action=pick(actions,id);return action?{action,stage}:null};
+    // Outstanding work takes precedence over creating another order.
+    const uncovered=c.inspection_lots?.filter(l=>!c.spec_coverage?.some(s=>s.stage===l.stage&&(!s.item||s.item===l.item)))||[];
+    const needsSpec=uncovered.length>0&&uncovered.length===c.inspection_lots.length;
+    const priorities=[
+      [has("approvals"),"purchase_decide",3],[has("passed"),"inspect_release",5],[has("pending_inspections"),"inspect_record",5],
+      [has("pending_lots")&&needsSpec,"spec",5],[has("pending_lots"),"inspect_start",5],
+      [has("purchase_lines")&&!flow.period,"setup.period",4],[has("purchase_lines"),"purchase_receive",4],
+      [has("purchase_drafts")&&!flow.rules,"setup.approval_rule",3],[has("purchase_drafts"),"purchase_submit",3],
+      [has("operations")&&has("released"),"operation_finish",7],
+      [has("released")&&!has("recipes"),"setup.recipe",6],[has("released")&&has("recipes")&&!flow.produced,"operation_new",7],
+      [!has("suppliers"),"setup.supplier",0],[!has("catalog"),"setup.item",1],[!has("quotes"),"supplier_quote",2],
+      [flow.produced&&has("released"),"transfer",8],[!flow.pending_approval,"purchase_quoted",3]
+    ];
+    for(const [when,id,stage] of priorities){const step=when&&candidate(id,stage);if(step)return step}
+    return null;
+  }
+  function entryIndex(w){
+    return entries(w).map(a=>({id:a.uid,title:a.title,group:a.group,art:a.art}));
+  }
+  window.ElhelwGuide={entries:entryIndex,normalize,next(w){const s=nextStep(w,entries(w));return s?{id:s.action.uid,title:s.action.title,art:guideStages[s.stage][0],stage:guideStages[s.stage][1],hint:guideStages[s.stage][2]}:null;}};
+  function illustration(key){
+    const span=el("span",null,"scene");span.innerHTML=window.elhelwArt(key);return span;
+  }
+  function tile(label,key,click,sub=""){
+    const b=button("",click);b.className="journey-tile";b.append(illustration(key));
+    const copy=el("span",null,"tile-copy");copy.append(el("strong",label));if(sub)copy.append(el("small",sub));b.append(copy);return b;
+  }
+  function inputSearch(oninput){
+    const bar=el("input",null,"task-search");bar.type="search";bar.placeholder="ابحث عن عملية أو قسم";bar.setAttribute("aria-label",bar.placeholder);bar.oninput=()=>oninput(normalize(bar.value));return bar;
+  }
+  function quotedLines(form,c){
+    const supplier=form.elements.namedItem("supplier"), fieldset=form.querySelector("fieldset");
+    const known=c.quotes||[];
+    const options=(select,values,placeholder)=>{
+      const previous=select.value;select.replaceChildren(new Option(placeholder,""));
+      for(const [id,label] of values)select.add(new Option(label,id));
+      select.value=values.some(([id])=>id===previous)?previous:values.length===1?values[0][0]:"";
+    };
+    options(supplier,(c.suppliers||[]).filter(s=>known.some(q=>q.supplier===s.id)).map(s=>[s.id,s.label]),"اختر المورد");
+    const update=()=>{
+      const quotes=known.filter(q=>q.supplier===supplier.value);
+      for(const row of fieldset.querySelectorAll(".erp-line")){
+        const item=row.querySelector("[name=item]"), price=row.querySelector("[name=price]");
+        options(item,quotes.map(q=>[q.item,q.name+" · "+prettyUnit(q.unit)]),"اختر الخامة");
+        const fill=()=>{price.value=quotes.find(q=>q.item===item.value)?.price??"";price.readOnly=true;};fill();item.onchange=fill;
       }
-      if(!menu.childElementCount)status.textContent="لا توجد صلاحيات تشغيل لهذا الحساب.";
+    };
+    supplier.onchange=update;fieldset.addEventListener("click",event=>{if(event.target.closest("button"))update()});update();
+  }
+  const needs={
+    rules:["حدد مين بيعتمد طلبية الشراء الأول.","setup.approval_rule"],open_period:["اختار الفترة المالية اللي هيتسجّل فيها الاستلام.","setup.period"],
+    suppliers:["أضف أول مورد عشان تقدر تسجل له سعر.","setup.supplier"],items:["أضف الصنف الأول.","setup.item"],catalog:["أضف أول خامة عشان تحدد سعرها.","setup.item"],quotes:["سجّل سعر خامة واحدة على الأقل للمورد قبل إنشاء طلبية.","supplier_quote"],
+    purchase_drafts:["أنشئ طلبية شراء الأول.","purchase_quoted"],approvals:["مفيش طلبية مستنية اعتمادك. الاعتماد بيتم من حساب غير اللي أرسلها.",""],purchase_lines:["الاستلام بيفتح بعد اعتماد طلبية فيها كمية متبقية.","purchase_decide"],billable:["استلم بندًا من الطلبية قبل تسجيل فاتورته.","purchase_receive"],
+    pending_lots:["استلم تشغيلة أو سجّل ناتج تصنيع الأول.","purchase_receive"],pending_inspections:["افتح فحص للتشغيلة الأول.","inspect_start"],passed:["سجّل نتيجة فحص ناجحة قبل الإفراج.","inspect_record"],recipes:["أضف وصفة إنتاج معتمدة الأول.","setup.recipe"],operations:["افتح أمر تشغيل الأول.","operation_new"],released:["تحتاج تشغيلة مفرج عنها وبرصيد متاح.","inspect_release"],roles:["أضف دور المراجعة الأول.","access.role"],accounts:["أضف حسابًا في دليل الحسابات.","setup.account"],locations:["أضف موقع تخزين الأول.","setup.location"],periods:["حدّد البداية والنهاية للفترة المالية.","setup.period"],customers:["أضف العميل الأول.","setup.customer"],lists:["أنشئ قائمة أسعار بيع.","setup.price_list"],channels:["أضف قناة بيع.","setup.channel"],treasuries:["أضف خزينة أولًا.","setup.treasury"]
+  };
+  function missingChoice(fields,choices){
+    for(const f of fields){if(f.optional)continue;if(typeof f.source==="string"&&!choices[f.source]?.length)return f.source;if(f.fields){const nested=missingChoice(f.fields,choices);if(nested)return nested}}
+    return null;
+  }
+  window.renderElhelwERP=async function(root,client,actor,initial="",options={}){
+    let snapshot,actions=[],screen={type:"home"},history=[],generation=0;
+    const status=el("div","","guide-status"),body=el("div",null,"guide-body");
+    status.setAttribute("role","status");root.classList.add("guide");root.replaceChildren(status,body);
+    function go(next){history.push(screen);screen=next;draw();root.scrollIntoView({block:"start"});}
+    function back(){if(!history.length)return false;screen=history.pop();draw();return true}
+    root.guideBack=back;
+    function header(title,key,sub){
+      const head=el("header",null,"guide-head");head.append(illustration(key));
+      const copy=el("div");copy.append(el("h2",title));if(sub)copy.append(el("p",sub));head.append(copy);body.append(head);
+    }
+    function showAction(a){go({type:"action",uid:a.uid})}
+    function section(title){body.append(el("h3",title,"section-title"));const div=el("div",null,"journey-grid");body.append(div);return div}
+    function actionTiles(grid,list){for(const a of list)grid.append(tile(a.title,a.art,()=>showAction(a)))}
+    function draw(){
+      body.replaceChildren();if(!snapshot)return;
+      if(history.length){const b=button("→  رجوع",back);b.className="back-link";body.append(b)}
+      if(screen.type==="action"){
+        const a=actions.find(x=>x.uid===screen.uid);if(!a)return;
+        header(a.title,a.art,a.group);
+        if(a.report){body.append(table(snapshot.records[a.report]));return}
+        if(a.action==="quote_book"){
+          body.append(table((snapshot.choices.quotes||[]).map(q=>({"المورد":q.supplier_name,"الخامة":q.name,"الوحدة":prettyUnit(q.unit),"سعر الوحدة (ج.م)":q.price}))));return;
+        }
+        const c=snapshot.choices, f=snapshot.flow||{};
+        const missing=(a.action==='purchase_submit'&&f.rules===false)?'rules':(a.action==='purchase_receive'&&c.purchase_lines?.length&&f.period===false)?'open_period':(a.action==="purchase_quoted"&&!snapshot.choices.quotes?.length)?"quotes":missingChoice(a.fields,snapshot.choices);
+        if(missing){
+          const [message,fix]=needs[missing]||["لسه مفيش بيانات متاحة للعملية دي.",""];
+          body.append(el("p",message,"guide-notice"));const prior=pick(actions,fix);
+          if(prior)body.append(tile(prior.title,prior.art,()=>showAction(prior)));return;
+        }
+        open(a,snapshot.choices);return;
+      }
+      if(screen.type==="stage"){
+        const [key,title,sub,ids]=guideStages[screen.index];header(title,key,sub);
+        const grid=section("خطوات المرحلة");actionTiles(grid,ids.map(id=>pick(actions,id)).filter(Boolean));return;
+      }
+      if(screen.type==="group"){
+        header(screen.title,symbols[screen.title]);actionTiles(section("العمليات"),actions.filter(a=>a.group===screen.title));return;
+      }
+      const next=nextStep(snapshot,actions);
+      const result=el("div",null,"journey-grid");const contents=el("div");const search=inputSearch(q=>{
+        result.replaceChildren();contents.hidden=Boolean(q);
+        if(q){const matches=actions.filter(a=>normalize(a.title+" "+a.group).includes(q));actionTiles(result,matches);if(!matches.length)result.append(el("p","مفيش نتيجة بالاسم ده."));}
+      });
+      body.append(search,result,contents);
+      if(next){const hero=tile(next.action.title,guideStages[next.stage][0],()=>showAction(next.action),"الخطوة التالية · "+guideStages[next.stage][1]);hero.className="guide-next";contents.append(hero)}
+      else if(snapshot.flow?.pending_approval)contents.append(el("p","الطلبية في انتظار اعتماد مسؤول تاني.","guide-notice"));
+      const availableStages=guideStages.map((stage,i)=>({stage,i})).filter(({stage})=>stage[3].some(id=>pick(actions,id)));
+      if(availableStages.length){
+        contents.append(el("h3","دورة الإنتاج","section-title"));const grid=el("div",null,"journey-grid");contents.append(grid);
+        for(const {stage:[key,title,sub],i} of availableStages)grid.append(tile((i+1).toLocaleString("ar-EG")+" · "+title,key,()=>go({type:"stage",index:i}),sub));
+      }
+      contents.append(el("h3","كل أقسام الشركة","section-title"));const dirs=el("div",null,"journey-grid");contents.append(dirs);
+      for(const title of new Set(actions.map(a=>a.group)))dirs.append(tile(title,symbols[title],()=>go({type:"group",title})));
+    }
+    async function refresh(message="",saved=false){
+      const id=++generation;status.textContent="جارٍ تحميل العمليات…";
+      try{
+        const {data,error}=await client.rpc("elhelw_erp_workspace");if(error)throw error;if(!root.isConnected||id!==generation)return;
+        snapshot=data;actions=entries(data);options.updated?.(data);
+        if(initial){const a=pick(actions,initial);initial="";if(a){history=[{type:"home"}];screen={type:"action",uid:a.uid}}}
+        if(saved){screen={type:"home"};history=[]}
+        status.textContent=message;draw();if(saved)root.scrollIntoView({block:"start"});
+      }catch(err){if(!root.isConnected)return;status.textContent="تعذّر تحميل العمليات. "+(err.message||err);body.replaceChildren(button("إعادة المحاولة",()=>refresh(message,saved)));}
     }
     function open(action,choices){
-      const form=el("form",null,"form-panel");work.replaceChildren(form);
-      form.append(el("h3",action.title));const grid=el("div",null,"form-grid");form.append(grid);
+      const form=el("form",null,"form-panel");body.append(form);
+      const grid=el("div",null,"form-grid");form.append(grid);
       const read=readFields(grid,action.fields,choices),submit=el("button",action.title,"primary");submit.type="submit";form.append(submit);
+      if(action.action==="purchase_quoted")quotedLines(form,choices);
+      if(action.action==="supplier_quote"){
+        const refill=()=>{const q=choices.quotes?.find(q=>q.supplier===form.elements.supplier.value&&q.item===form.elements.item.value);form.elements.price.value=q?.price??"";};
+        form.elements.supplier.onchange=refill;form.elements.item.onchange=refill;
+      }
+      prepareDefaults(form,action.action,choices);
       const feedback=el("div");feedback.setAttribute("role","status");form.append(feedback);
-      form.scrollIntoView({block:"start"});form.addEventListener("submit",async event=>{
+      form.addEventListener("submit",async event=>{
         event.preventDefault();if(submit.disabled)return;submit.disabled=true;feedback.textContent="جارٍ التنفيذ…";
         try{
           let payload=await read();if(["opening_stage","cutover_review"].includes(action.action))payload=payload.file;
@@ -248,7 +409,7 @@
             feedback.replaceChildren(el("p",data.matches?"الأرصدة مطابقة":"يوجد فرق في المطابقة"),el("p","عدد البنود "+data.lines+" · إجمالي القيمة "+data.value),table(data.problems));
             submit.disabled=false;
           }else{
-            form.remove();await refresh(action.action==="inspect_record"?(data==="passed"?"نجح الفحص. التشغيلة في انتظار الإفراج.":"فشل الفحص. التشغيلة في الحجر."):"تم تنفيذ العملية.");
+            form.remove();await refresh(action.action==="inspect_record"?(data==="passed"?"نجح الفحص. التشغيلة في انتظار الإفراج.":"فشل الفحص. التشغيلة في الحجر."):"تم الحفظ · "+action.title,true);
           }
         }catch(err){feedback.textContent="تعذّر تنفيذ العملية. "+(err.message||err);submit.disabled=false;}
       });

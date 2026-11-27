@@ -4,7 +4,7 @@ const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const out = path.join(root, "www");
-const files = ["index.html", "app.js", "styles.css", "config.js", "production-calculator.js", "procurement.js", "erp-workspace.js", "production-calculator.css", "sw.js", "manifest.webmanifest"];
+const files = ["index.html", "app.js", "styles.css", "config.js", "production-calculator.js", "procurement.js", "erp-workspace.js", "interface.css", "illustrations.js", "production-calculator.css", "sw.js", "manifest.webmanifest"];
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
@@ -38,6 +38,14 @@ fs.cpSync(calculatorSource, calculatorTarget, { recursive: true });
 const assetsSource = path.join(root, "assets");
 const assetsTarget = path.join(out, "assets");
 fs.cpSync(assetsSource, assetsTarget, { recursive: true });
+
+const fontsTarget = path.join(assetsTarget, "fonts");
+const fontSource = path.join(root, "node_modules/@fontsource-variable/cairo");
+fs.mkdirSync(fontsTarget, {recursive:true});
+for (const script of ["arabic","latin"]) {
+  fs.copyFileSync(path.join(fontSource,"files","cairo-"+script+"-wght-normal.woff2"),path.join(fontsTarget,"cairo-"+script+".woff2"));
+}
+fs.copyFileSync(path.join(fontSource,"LICENSE"),path.join(fontsTarget,"Cairo-LICENSE.txt"));
 
 // Build Capacitor Filesystem + Share into a local browser bundle.
 // Never fetch these modules at runtime inside Android WebView.

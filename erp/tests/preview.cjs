@@ -14,19 +14,21 @@ async function main() {
     await page.goto(pathToFileURL(path.resolve(file)).href);
     await page.waitForFunction(()=>!document.getElementById("actor").disabled || document.getElementById("state").textContent.includes("تعذّر"),null,{timeout:60000});
     assert.equal(await page.locator("#actor").isDisabled(),false,await page.locator("#state").innerText());
-    await page.getByRole("button",{name:"رصيد المخزون"}).click();
+    async function openTask(title) {
+      await page.getByRole("searchbox").fill(title);
+      await page.getByRole("button",{name:title,exact:true}).click();
+    }
+    await openTask("رصيد المخزون");
     await page.getByText("GREEN-01",{exact:true}).waitFor();
     await page.locator("#actor").selectOption("2");
-    await page.locator("summary",{hasText:"المشتريات"}).click();
-    await page.getByRole("button",{name:"مراجعة اعتماد"}).click();
+    await openTask("مراجعة اعتماد");
     const form = page.locator("form");
     await form.locator("[name=order]").selectOption({label:"PO-DEMO-01"});
     await form.locator("[name=decision]").selectOption("approved");
     await form.locator("[type=submit]").click();
     await form.waitFor({state:"detached"});
     await page.locator("#actor").selectOption("1");
-    await page.locator("summary",{hasText:"المشتريات"}).click();
-    await page.getByRole("button",{name:"استلام تشغيلة"}).click();
+    await openTask("استلام تشغيلة");
     assert.match(await page.locator("select[name=line]").textContent(),/PO-DEMO-01/);
     assert.deepEqual(outbound,[]);
     console.log("Offline mobile-viewport preview and two-account approval passed");

@@ -15,7 +15,7 @@
   function fail(e){console.error(e);toast(e?.message||"حدث خطأ. راجع البيانات وحاول مرة أخرى.");}
   async function rows(table, query){let q=sb.from(table).select(query||"*");let {data,error}=await q; if(error)throw error;return data||[]}
   async function rpc(name,args){let {data,error}=await sb.rpc(name,args);if(error)throw error;return data}
-  function setContent(html){$("content").innerHTML=html;enhanceTables($("content"))}
+  function setContent(html){$("content").innerHTML=html;enhanceTables($("content"));window.elhelwMobileRecords($("content"))}
   function enhanceTables(root){root.querySelectorAll(".table-wrap").forEach(w=>{const table=w.querySelector("table");if(!table||w.previousElementSibling?.classList.contains("ux-search"))return;const input=document.createElement("input");input.className="ux-search";input.type="search";input.placeholder="بحث في القائمة…";input.setAttribute("aria-label","بحث في القائمة");w.before(input);input.oninput=()=>{const term=input.value.trim().toLowerCase();table.querySelectorAll("tbody tr").forEach(tr=>tr.hidden=!tr.textContent.toLowerCase().includes(term))}})}
   function navigateTo(id){goScreen(id)}
   function chartBars(items){const max=Math.max(1,...items.map(x=>x[1]));return '<div class="ux-chart">'+items.map(([label,n])=>'<div class="ux-bar-row"><span>'+esc(label)+'</span><div class="ux-track"><div style="width:'+Math.max(0,100*n/max)+'%"></div></div><strong>'+qty(n)+'</strong></div>').join("")+'</div>'}
@@ -59,14 +59,25 @@
     $("auth-view").classList.add("hidden");$("workspace").classList.remove("hidden");
     if(!profileComplete())activeTab="profile";
     await refreshUserArea();
-    $("role-label").textContent=profile.role==="admin"?"ADMIN WORKSPACE":"DISTRIBUTOR WORKSPACE";
+    $("role-label").textContent=profile.role==="admin"?"مساحة الإدارة":"مساحة المندوب";
     $("welcome-title").textContent=`أهلاً ${profile.full_name}`;
     $("welcome-subtitle").textContent=profile.role==="admin"?"إدارة شبكة الموزعين والمبيعات والمخزون.":"متابعة مخزونك وكافيهاتك وطلبياتك.";
-    $("refresh-btn").onclick=render;
+    $("refresh-btn").onclick=async()=>{
+      if(erpAvailable&&activeTab==="dashboard"){
+        const {data,error}=await sb.rpc("elhelw_erp_workspace");if(error)return fail(error);
+        erpSnapshot=data;renderTabs();
+      }
+      await render();
+    };
+    erpAvailable=false;erpSnapshot=null;erpEntry="";
     renderTabs();await render();initPush().catch(console.warn);
-    sb.rpc("elhelw_erp_available").then(({data,error})=>{
+    sb.rpc("elhelw_erp_available").then(async ({data,error})=>{
       if(error && error.code!=="PGRST202") console.warn("ERP",error.message);
-      if(data===true && sessionUser?.id===user.id){erpAvailable=true;renderTabs();}
+      if(data===true && sessionUser?.id===user.id){
+        erpAvailable=true;renderTabs();
+        const {data:work}=await sb.rpc("elhelw_erp_workspace");
+        if(work&&sessionUser?.id===user.id){erpSnapshot=work;if(activeTab==="dashboard"&&!$("app-search")?.value)renderTabs();}
+      }
     }).catch(console.warn);
   }
   const groupsAdmin=[["المبيعات","cart",["orders","cafes","products","returns"]],["المصنع","factory",["roasting","recipes","factory","productionCalculator"]],["المخازن","box",["inventory","rawStock","packaging","onlineStock","sampleInventory"]],["الحسابات","wallet",["finance","commissions"]],["التوزيع","truck",["distributors","people"]],["المشتريات","clipboard",["procurement","materials","supplierOrders"]],["الإدارة","settings",["adminTools"]]];
@@ -74,7 +85,7 @@
   const paths={message:'<path d="M21 11a8 8 0 0 1-8 8H4l2-4a8 8 0 1 1 15-4Z"/>',bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',cart:'<circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2 3h3l3 13h12l2-9H6"/>',factory:'<path d="M3 21V9l7 4V9l7 4V3h4v18Z"/><path d="M7 17h2m4 0h2"/>',box:'<path d="m3 7 9-5 9 5v10l-9 5-9-5Z M3 7l9 5 9-5M12 12v10"/>',wallet:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M21 10h-6v5h6"/>',truck:'<path d="M2 5h13v13H2ZM15 10h4l3 4v4h-7"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/>',clipboard:'<rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 2h6v5H9ZM9 12h6m-6 4h6"/>',settings:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',coffee:'<path d="M3 8h14v7a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5ZM17 9h2a3 3 0 0 1 0 6h-2M7 2v3m5-3v3"/>',home:'<path d="m3 10 9-8 9 8v11H3Z M9 21v-8h6v8"/>',chart:'<path d="M3 3v18h18M7 16l5-6 4 3 5-8"/>',user:'<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>'};
   const glyph=k=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[k]||paths.clipboard)+'</svg>';
   let expandedGroup="";
-  function goScreen(id){if(!profileComplete()&&id!=="profile"&&!(profile.role==="admin"&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();render();window.scrollTo(0,0)}
+  function goScreen(id){if(id==="dashboard")returnTab="dashboard";if(!profileComplete()&&id!=="profile"&&!(profile.role==="admin"&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();window.scrollTo(0,0);return render()}
   window.elhelwHandleBack=function(){
     if(!profile||!$("tabs")||!$("tabs").getClientRects().length)return false;
     if($("chat-person-dialog")?.open){$("chat-person-dialog").close();return true}
@@ -83,19 +94,63 @@
     const back=$("tabs").querySelector("[data-back]");if(back){back.click();return true}
     goScreen("dashboard");return true;
   };
+  const screenArt = {orders:"orders",cafes:"sales",products:"goods",returns:"return",roasting:"roast",recipes:"recipe",factory:"factory",productionCalculator:"calc",inventory:"stock",rawStock:"materials",packaging:"goods",onlineStock:"online",sampleInventory:"coffee",finance:"finance",commissions:"prices",distributors:"delivery",people:"team",procurement:"supplier",materials:"materials",supplierOrders:"buy",adminTools:"setup",samples:"coffee",reports:"reports",chat:"chat",notifications:"alerts",profile:"profile",erpWorkspace:"plan"};
+  const departmentArt={cart:"orders",factory:"factory",box:"stock",wallet:"finance",truck:"delivery",clipboard:"buy",settings:"setup",coffee:"coffee"};
+  const directoryLabels={erpWorkspace:"دورة الإنتاج وعمليات الشركة",roasting:"التحميص",recipes:"التوليفات",factory:"تصنيع وتعبئة",rawStock:"مخزون الخامات",packaging:"مخزون التعبئة والتغليف",materials:"الخامات وأسعار الموردين",supplierOrders:"طلبيات الموردين",procurement:"الموردون",reports:"التقارير",chat:"المحادثات",notifications:"الإشعارات",onlineStock:"مخزون الأونلاين"};
+  let erpSnapshot=null, erpEntry="", returnTab="dashboard";
+  function screenTile(label,picture,attr,value,sub=""){
+    return '<button type="button" class="journey-tile" '+attr+'="'+esc(value)+'"><span class="scene">'+window.elhelwArt(picture)+'</span><span class="tile-copy"><strong>'+esc(label)+'</strong>'+(sub?'<small>'+esc(sub)+'</small>':'')+'</span></button>';
+  }
   function renderTabs(){
-    const admin=profile.role==="admin",tabs=admin?adminTabs:distTabs,groups=[...(admin?groupsAdmin:groupsDist)];
-    if(erpAvailable)groups.push(["تخطيط موارد الشركة","factory",["erpWorkspace"]]);
-    const labels=Object.fromEntries([...tabs,["erpWorkspace","عمليات الشركة"],["roasting","التحميص"],["recipes","التوليفات"],["factory","تصنيع وتعبئة"],["rawStock","مخزون الخامات"],["packaging","التعبئة والتغليف"],["materials","الخامات والأسعار"],["supplierOrders","طلبيات الموردين"],["reports","التقارير"],["chat","المحادثات"],["notifications","الإشعارات"]]);
-    const group=groups.find(g=>g[2].includes(activeTab)), selected=groups.find(g=>g[0]===expandedGroup);
-    const home=activeTab==="dashboard", menu=activeTab==="group";
-    document.querySelector(".welcome")?.classList.toggle("hidden",!home);
-    $("tabs").innerHTML=home?'<div class="ux-grid ux-large">'+groups.map(([name,k])=>'<button class="ux-tile" data-group="'+name+'">'+glyph(k)+'<strong>'+name+'</strong></button>').join("")+'</div>':menu&&selected?'<div class="ux-screen-head"><button data-tab="dashboard">→</button><h2>'+selected[0]+'</h2></div><div class="ux-list">'+selected[2].map(id=>'<button data-tab="'+id+'">'+glyph(selected[1])+'<strong>'+labels[id]+'</strong><span>‹</span></button>').join("")+'</div>':'<div class="ux-screen-head"><button data-back>→</button><h2>'+ (labels[activeTab]||"")+'</h2></div>';
-    let nav=document.getElementById("ux-bottom");if(!nav){nav=document.createElement("nav");nav.id="ux-bottom";document.body.append(nav)}
-    nav.innerHTML=[["dashboard","home","الرئيسية"],["reports","chart","التقارير"],["chat","message","المحادثات"],["notifications","bell","الإشعارات"],["profile","user","حسابي"]].map(([id,k,l])=>'<button data-tab="'+id+'" class="'+(activeTab===id?'selected':'')+'">'+glyph(k)+'<span>'+l+'</span></button>').join("");
-    [$("tabs"),nav].forEach(el=>el.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>goScreen(b.dataset.tab)));
-    $("tabs").querySelectorAll("[data-group]").forEach(b=>b.onclick=()=>{expandedGroup=b.dataset.group;goScreen("group")});
-    const back=$("tabs").querySelector("[data-back]");if(back)back.onclick=()=>{if(group){expandedGroup=group[0];goScreen("group")}else goScreen("dashboard")};
+    const admin=profile.role==="admin",groups=admin?groupsAdmin:groupsDist,labels={...Object.fromEntries(admin?adminTabs:distTabs),...directoryLabels};
+    const home=activeTab==="dashboard",menu=activeTab==="group",selected=groups.find(g=>g[0]===expandedGroup);
+    const currentGroup=groups.find(g=>g[2].includes(activeTab));
+    const tabs=$("tabs");document.querySelector(".welcome")?.classList.toggle("hidden",!home);
+    const shortcut=(id)=>screenTile(labels[id],screenArt[id],"data-tab",id);
+    if(home){
+      const next=erpSnapshot&&window.ElhelwGuide.next(erpSnapshot);
+      const erpEntries=erpSnapshot?window.ElhelwGuide.entries(erpSnapshot):[];
+      const shortcuts=admin?["onlineStock","orders","inventory"]:["orders","cafes","inventory"];
+      const main=erpAvailable?'<button class="home-feature" data-erp="'+esc(next?.id||"")+'"><span class="feature-text"><small>'+ (next?'الخطوة التالية · '+esc(next.stage):'عمليات الشركة')+'</small><strong>'+esc(next?.title||"افتح دورة الإنتاج")+'</strong><span>'+esc(next?.hint||"تابع أوامر الشراء والإنتاج.")+'</span><b>متابعة ←</b></span><span class="hero-art">'+window.elhelwArt(next?.art||"factory")+'</span></button>':
+        '<button class="home-feature" data-tab="orders"><span class="feature-text"><small>المبيعات والتوزيع</small><strong>طلبياتك</strong><span>تابع الطلبات والتسليم من مكان واحد.</span><b>فتح الطلبيات ←</b></span><span class="hero-art">'+window.elhelwArt("delivery")+'</span></button>';
+      tabs.innerHTML='<label class="search-box"><span aria-hidden="true">⌕</span><input id="app-search" type="search" placeholder="بتدور على إيه؟" aria-label="ابحث في التطبيق كله"></label><div id="directory-matches" class="journey-grid"></div><div id="home-sections">'+main+
+        '<div class="section-line"><h2>وصول سريع</h2></div><div class="quick-grid">'+shortcuts.map(shortcut).join("")+'</div><div class="section-line"><h2>أقسام التطبيق</h2></div><div class="journey-grid">'+
+        (erpAvailable?screenTile("دورة الإنتاج","factory","data-erp","","من المورد لحد المنتج التام"):"")+groups.map(([title,key,ids])=>screenTile(title,departmentArt[key],"data-group",title,ids.slice(0,2).map(id=>labels[id]).join(" · "))).join("")+
+        shortcut("reports")+shortcut("chat")+shortcut("notifications")+shortcut("profile")+'</div></div>';
+      const index=[];for(const [group,,ids] of groups)for(const id of ids)index.push({label:labels[id],group,attr:"data-tab",id,art:screenArt[id]});
+      for(const id of ["reports","chat","notifications","profile"])index.push({label:labels[id],group:"التطبيق",attr:"data-tab",id,art:screenArt[id]});
+      const tasks=[["orders","new-order","إنشاء طلبية توزيع"],["cafes","add-cafe","إضافة كافيه"],["returns","new-return","تسجيل مرتجع"],["samples","new-sample","تسجيل عينة"],["products","add-product","إضافة منتج للبيع"],["commissions","add-commission","تحديد عمولة"],["distributors","add-dist","إضافة موزع"]];
+      for(const [screen,id,label] of tasks)if(groups.some(g=>g[2].includes(screen)))index.push({label,group:labels[screen],art:screenArt[screen],attr:"data-task",id:screen+"/"+id});
+      if(erpAvailable)index.unshift({label:labels.erpWorkspace,group:"دورة الإنتاج",attr:"data-erp",id:"",art:"factory"});
+      index.unshift(...erpEntries.map(a=>({label:a.title,group:"عمليات الشركة · "+a.group,id:a.id,attr:"data-erp",art:a.art})));
+      const search=$("app-search");search.oninput=()=>{
+        const q=window.ElhelwGuide.normalize(search.value);$("home-sections").hidden=Boolean(q);
+        const found=q?index.filter(i=>window.ElhelwGuide.normalize(i.label+" "+i.group).includes(q)):[];
+        $("directory-matches").innerHTML=found.map(i=>screenTile(i.label,i.art,i.attr,i.id,i.group)).join("")||(q?'<p class="guide-notice">مفيش نتيجة بالاسم ده.</p>':"");
+      };
+    }else{
+      const title=menu?selected?.[0]:labels[activeTab];
+      const art=menu?departmentArt[selected?.[1]]:screenArt[activeTab];
+      tabs.innerHTML='<div class="page-head"><button type="button" class="back-link" data-back aria-label="رجوع">→ رجوع</button><div><h2>'+esc(title||"")+'</h2><span class="scene">'+window.elhelwArt(art)+'</span></div></div>'+
+        (menu&&selected?'<div class="journey-grid">'+selected[2].map(shortcut).join("")+'</div>':"");
+    }
+    let nav=$("ux-bottom");if(!nav){nav=document.createElement("nav");nav.id="ux-bottom";nav.setAttribute("aria-label","التنقل الرئيسي");document.body.append(nav)}
+    nav.innerHTML=[["dashboard","home","الرئيسية"],["reports","chart","التقارير"],["chat","message","المحادثات"],["notifications","bell","الإشعارات"],["profile","user","حسابي"]].map(([id,k,l])=>'<button type="button" data-tab="'+id+'" '+(activeTab===id?'aria-current="page" class="selected"':'')+'>'+glyph(k)+'<span>'+l+'</span></button>').join("");
+    nav.onclick=e=>{const b=e.target.closest("[data-tab]");if(b)goScreen(b.dataset.tab)};
+    tabs.onclick=async e=>{
+      const b=e.target.closest("button");if(!b||!tabs.contains(b))return;
+      if(b.hasAttribute("data-back")){
+        if(activeTab==="erpWorkspace"&&$("erp-workspace")?.guideBack?.())return;
+        if(!menu&&currentGroup&&returnTab==="group"){expandedGroup=currentGroup[0];goScreen("group")}else goScreen("dashboard");return;
+      }
+      if(b.hasAttribute("data-task")){
+        const [screen,id]=b.dataset.task.split("/");returnTab="dashboard";await goScreen(screen);
+        if(activeTab===screen)$(id)?.click();return;
+      }
+      if(b.hasAttribute("data-erp")){erpEntry=b.dataset.erp;returnTab="dashboard";goScreen("erpWorkspace");return}
+      if(b.hasAttribute("data-group")){expandedGroup=b.dataset.group;goScreen("group");return}
+      if(b.hasAttribute("data-tab")){returnTab=activeTab;goScreen(b.dataset.tab)}
+    };
   }
 
   let pushToken=null,pushStarted=false;
@@ -178,7 +233,8 @@
       if(activeTab==="dashboard"||activeTab==="group")return setContent("");
       if(activeTab==="erpWorkspace" && erpAvailable){
         setContent('<section id="erp-workspace"></section>');
-        return await window.renderElhelwERP($("erp-workspace"),sb,sessionUser.id);
+        const entry=erpEntry;erpEntry="";
+        return await window.renderElhelwERP($("erp-workspace"),sb,sessionUser.id,entry,{updated:w=>{erpSnapshot=w}});
       }
       if(activeTab==="reports")return dashboard();
       if(activeTab==="products")return products();
