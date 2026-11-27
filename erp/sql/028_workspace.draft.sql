@@ -22,6 +22,9 @@ begin
   inspection:=(p->>'inspection')::uuid;
   select lot_id into strict lot from erp.inspections where id=inspection;
   perform erp.release_inspected_lot(lot,inspection);
+ when 'spec_retire' then
+  perform erp.require_permission('quality.configure');
+  update erp.quality_specs set active=false where id=(p->>'spec')::uuid and active returning id into strict doc;
  when 'spec' then output_value:=to_jsonb(erp.configure_check(p));
  when 'purchase_new' then output_value:=to_jsonb(erp.create_purchase((p->>'supplier')::uuid,p->>'code',p->'lines'));
  when 'purchase_submit' then output_value:=to_jsonb(erp.submit_purchase((p->>'order')::uuid));
@@ -179,6 +182,10 @@ begin
    (select code,stock_value,gl_value,stock_value-gl_value difference from erp.inventory_account_reconciliation) q;
   select records||jsonb_build_object('trial',coalesce(jsonb_agg(to_jsonb(q) order by q.starts_on,q.code),'[]')) into records from
     (select f.starts_on,t.code,t.name,t.debit,t.credit,t.net from erp.trial_balance t join erp.fiscal_periods f on f.id=t.period_id) q;
+ end if;
+ if 'quality.configure'=any(perms) then
+  select data||jsonb_build_object('active_specs',coalesce(jsonb_agg(to_jsonb(q) order by q.label),'[]')) into data from
+   (select s.id,coalesce(i.sku,'*')||' · '||s.stage||' · '||s.test_name label from erp.quality_specs s left join erp.items i on i.id=s.item_id where s.active) q;
  end if;
  if 'quality.read'=any(perms) then
   select records||jsonb_build_object('quality',coalesce(jsonb_agg(to_jsonb(q) order by q.sku,q.lot_code),'[]')) into records from

@@ -13,7 +13,9 @@ begin
  insert into erp.items(sku,name,kind,base_unit,inventory_account_id) values('A','Raw','RM','KG',erp.posting_account('raw')) returning id into raw;
  insert into erp.items(sku,name,kind,base_unit,inventory_account_id) values('B','Blend','GB','KG',erp.posting_account('raw')) returning id into green;
  insert into erp.items(sku,name,kind,base_unit,inventory_account_id) values('C','Roasted','RB','KG',erp.posting_account('fg')) returning id into out_id;
- po:=erp.create_purchase(s,'P',jsonb_build_array(jsonb_build_object('item',raw,'qty',5,'price',20)));
+ perform erp.configure('item_unit',jsonb_build_object('item',raw,'unit','G','factor',0.001));
+ po:=erp.create_purchase(s,'P',jsonb_build_array(jsonb_build_object('item',raw,'unit','G','qty',5000,'price',0.02)));
+ if (select quantity from erp.purchase_order_lines where order_id=po)<>5 then raise exception 'Purchase conversion mismatch';end if;
  update erp.purchase_orders set status='approved' where id=po;select id into pl from erp.purchase_order_lines where order_id=po;
  for n in 1..2 loop
   insert into erp.lots(item_id,lot_code) values(raw,'L'||n) returning id into lot;

@@ -1,16 +1,27 @@
 begin;
 insert into erp.permissions values ('setup.configure','Configure ERP master data and posting rules');
+create function erp.unit_factor(p_item uuid,p_unit text) returns numeric language plpgsql stable set search_path='' as $$
+declare base text; factor numeric;
+begin
+ select base_unit into strict base from erp.items where id=p_item and active;
+ if p_unit is null or p_unit=base then return 1;end if;
+ select factor_to_base into factor from erp.item_units where item_id=p_item and unit_code=p_unit;
+ if factor is null then raise exception 'Configure the item unit conversion first';end if;
+ return factor;
+end $$;
 create function erp.create_purchase(p_supplier uuid,p_code text,p_lines jsonb) returns uuid language plpgsql set search_path='' as $$
-declare doc uuid; line record;
+declare doc uuid; line record; factor numeric; base_qty numeric; base_price numeric;
 begin
   perform erp.require_permission('purchases.manage');
   perform id from erp.suppliers where id=p_supplier and active for share;
   if not found or nullif(trim(p_code),'') is null or jsonb_typeof(p_lines) is distinct from 'array' or jsonb_array_length(p_lines)=0 then raise exception 'Supplier, number and purchase lines required'; end if;
   insert into erp.purchase_orders(code,supplier_id) values(trim(p_code),p_supplier) returning id into doc;
-  for line in select * from jsonb_to_recordset(p_lines) x(item uuid,qty numeric,price numeric) loop
-    if not exists(select from erp.items where id=line.item and active and (base_unit<>'EA' or line.qty=trunc(line.qty)))
+  for line in select * from jsonb_to_recordset(p_lines) x(item uuid,qty numeric,price numeric,unit text) loop
+    factor:=erp.unit_factor(line.item,line.unit);base_qty:=line.qty*factor;base_price:=round(line.price/factor,8);
+    if base_qty<>round(base_qty,6) or round(base_qty*base_price,8)<>round(line.qty*line.price,8) then raise exception 'Entered unit price cannot be represented at base-unit precision';end if;
+    if not exists(select from erp.items where id=line.item and active and (base_unit<>'EA' or base_qty=trunc(base_qty)))
       or line.qty<>round(line.qty,6) or line.price<>round(line.price,8) then raise exception 'Invalid purchase line'; end if;
-    insert into erp.purchase_order_lines(order_id,item_id,quantity,unit_price) values(doc,line.item,line.qty,line.price);
+    insert into erp.purchase_order_lines(order_id,item_id,quantity,unit_price) values(doc,line.item,base_qty,base_price);
   end loop;
   return doc;
 end $$;

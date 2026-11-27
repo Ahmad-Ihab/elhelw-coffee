@@ -25,6 +25,10 @@ begin
  when 'item' then
   insert into erp.items(sku,name,kind,base_unit,net_weight_kg,inventory_account_id,shelf_life_days)
    values(p->>'code',p->>'name',p->>'kind',p->>'unit',(p->>'weight')::numeric,(p->>'account')::uuid,(p->>'days')::integer) returning id into obj;
+ when 'item_unit' then
+  if not exists(select from erp.items where id=(p->>'item')::uuid and base_unit<>(p->>'unit') and active) then raise exception 'Conversion must use an alternate unit';end if;
+  insert into erp.item_units values((p->>'item')::uuid,p->>'unit',(p->>'factor')::numeric)
+   on conflict(item_id,unit_code) do update set factor_to_base=excluded.factor_to_base;
  when 'mapping' then
   insert into erp.legacy_item_map values(p->>'source_table',p->>'source_key',(p->>'item')::uuid);
  when 'supplier' then
@@ -75,6 +79,8 @@ begin
  case p_action
  when 'role' then insert into erp.roles(code,name) values(p->>'code',p->>'name') returning id into obj;
  when 'role_permission' then insert into erp.role_permissions values((p->>'role')::uuid,p->>'permission') on conflict do nothing;
+ when 'revoke_role_permission' then delete from erp.role_permissions where role_id=(p->>'role')::uuid and permission_code=p->>'permission';
+ when 'clear_override' then delete from erp.user_permissions where user_id=(p->>'user')::uuid and permission_code=p->>'permission';
  when 'assign_role' then insert into erp.user_roles values((p->>'user')::uuid,(p->>'role')::uuid) on conflict do nothing;
  when 'remove_role' then delete from erp.user_roles where user_id=(p->>'user')::uuid and role_id=(p->>'role')::uuid;
  when 'user_override' then insert into erp.user_permissions values((p->>'user')::uuid,p->>'permission',(p->>'allowed')::boolean)

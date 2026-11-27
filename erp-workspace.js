@@ -6,6 +6,7 @@
   const fixed = (...pairs) => pairs.map(([id,label])=>({id,label}));
   const yesNo = fixed(["true","نعم"],["false","لا"]);
   const stages = fixed(["receipt","الاستلام"],["blend","الخلط"],["roast","التحميص"],["grind","الطحن"],["flavor","إضافة النكهة"],["pack","التعبئة"]);
+  const units = fixed(["KG","كجم"],["G","جم"],["EA","قطعة"],["L","لتر"],["ML","مل"]);
   const item = choice("item","الصنف","items"), qty = field("qty","الكمية بالوحدة الأساسية","number");
   const code = field("code","الرقم المرجعي"), name = field("name","الاسم"), date = field("date","تاريخ الترحيل","date");
   const location = choice("location","الموقع","locations"), account = choice("account","الحساب","accounts");
@@ -20,7 +21,7 @@
   const asset = choice("asset","المعدة أو الأصل","assets"), notes = field("notes","وصف العمل");
   const groups = [
     ["المشتريات",[
-      fn("purchase_new","إنشاء أمر شراء","purchases.manage",[code,supplier,many("lines","بنود الشراء",[item,qty,field("price","سعر الوحدة","number")])]),
+      fn("purchase_new","إنشاء أمر شراء","purchases.manage",[code,supplier,many("lines","بنود الشراء",[item,choice("unit","وحدة الشراء (الافتراضي وحدة الصنف)",units,true),field("qty","الكمية بوحدة الشراء","number"),field("price","سعر وحدة الشراء","number")])]),
       fn("purchase_submit","إرسال أمر للاعتماد","purchases.manage",[choice("order","أمر الشراء","purchase_drafts")]),
       fn("purchase_decide","مراجعة اعتماد","purchases.approve",[choice("order","أمر الشراء","approvals"),choice("decision","القرار",fixed(["approved","اعتماد"],["rejected","إعادة للمراجعة"]))]),
       fn("purchase_receive","استلام تشغيلة","purchases.receive",[choice("line","البند والكمية المتبقية","purchase_lines"),lotCode,location,qty,date,field("expiry","تاريخ الصلاحية","date",true)]),
@@ -35,6 +36,7 @@
       fn("inspect_start","فتح فحص","quality.inspect",[choice("lot","التشغيلة","pending_lots")]),
       fn("inspect_record","تسجيل نتائج الفحص","quality.inspect",[choice("inspection","الفحص المفتوح","pending_inspections"),field("values","نتائج القياس","checks")]),
       fn("inspect_release","الإفراج عن تشغيلة","quality.release",[choice("inspection","الفحص الناجح","passed")]),
+      fn("spec_retire","إيقاف مواصفة للفحوص الجديدة","quality.configure",[choice("spec","المواصفة","active_specs")]),
       fn("spec","إضافة مواصفة فحص","quality.configure",[choice("item","الصنف (اتركه فارغًا لكل الأصناف)","items",true),choice("stage","المرحلة",stages),name,choice("kind","نوع القياس",fixed(["numeric","رقمي"],["boolean","نعم أو لا"],["text","نص مطابق"])),field("min","الحد الأدنى","number",true),field("max","الحد الأقصى","number",true),field("unit","وحدة القياس","text",true),field("expected","النص المطلوب","text",true),choice("mandatory","فحص إلزامي",yesNo)])
     ]],
     ["المخزون",[
@@ -103,6 +105,7 @@
       setup("period","فترة مالية",[field("start","بداية الفترة","date"),field("end","نهاية الفترة","date")]),
       setup("location","موقع مخزني",[code,name,choice("kind","النوع",fixed(["warehouse","مخزن رئيسي"],["storage","تخزين"],["channel","قناة بيع"],["custody","عهدة"],["quarantine","حجر"]))]),
       setup("item","صنف",[code,name,choice("kind","نوع الصنف",fixed(["RM","خامة"],["ADD","إضافة"],["GB","خلطة خضراء"],["RB","بن محمص"],["GC","بن مطحون"],["FB","بن منكه"],["PK","مادة تغليف"],["FG","منتج تام"])),choice("unit","الوحدة الأساسية",fixed(["KG","كجم"],["G","جم"],["EA","قطعة"],["L","لتر"],["ML","مل"])),field("weight","وزن الوحدة بالكيلو","number",true),field("days","مدة الصلاحية بالأيام","number",true),account]),
+      setup("item_unit","معامل تحويل وحدة صنف",[item,choice("unit","الوحدة البديلة",units),field("factor","عدد الوحدات الأساسية لكل وحدة بديلة","number")]),
       setup("mapping","ربط كود قديم بصنف",[field("source_table","مصدر الكود"),field("source_key","الكود القديم"),item]),
       setup("supplier","مورّد",[code,name,field("legacy_id","معرّف المورّد القديم","text",true)]),setup("customer","عميل",[code,name,field("legacy_id","معرّف الكافيه القديم","text",true)]),
       setup("channel","قناة بيع",[code,name,location,choice("kind","تنفيذ الطلبات",fixed(["direct","بيع مباشر"],["external","المتجر المركزي"],["distributor","توزيع"]))]),
@@ -116,6 +119,7 @@
     ]],
     ["صلاحيات الموظفين",[
       access("role","دور جديد",[code,name]),access("role_permission","إضافة صلاحية لدور",[role,permission]),
+      access("revoke_role_permission","سحب صلاحية من دور",[role,permission]),access("clear_override","إلغاء استثناء والرجوع لصلاحيات الدور",[user,permission]),
       access("assign_role","إسناد دور لموظف",[user,role]),access("remove_role","سحب دور من موظف",[user,role]),
       access("user_override","استثناء صلاحية لموظف",[user,permission,choice("allowed","السماح",yesNo)])
     ]]
