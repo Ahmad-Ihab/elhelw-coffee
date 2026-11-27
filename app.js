@@ -371,20 +371,54 @@
     if(window.Capacitor?.isNativePlatform?.()){const printer=window.APP_INVOICE_PDF||window.Capacitor?.Plugins?.InvoicePdf;if(!printer?.print)throw Error("خدمة PDF غير متاحة");await printer.print({html,filename});toast("اختر Save as PDF لحفظ تقرير المخزون");return}
     if(typeof html2pdf!=="function")throw Error("مكتبة PDF غير متاحة");const host=document.createElement("div");host.style.cssText="position:fixed;left:0;top:0;width:760px;background:white;z-index:99999";host.innerHTML=html;document.body.append(host);try{await html2pdf().set({filename,margin:8,html2canvas:{scale:2,backgroundColor:"#ffffff"},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"},pagebreak:{mode:["css","legacy"],avoid:"tr"}}).from(host.firstElementChild).save()}finally{host.remove()}
   }
+
+  async function exportOnlineStockExcel(products,fetchedAt){
+    if(products.length!==24||products.some(p=>![p.stock_quantity,p.reserved,p.available].every(Number.isSafeInteger)))throw Error("بيانات المخزون المركزي غير مكتملة");
+    const enc=new TextEncoder(),xml=v=>String(v??"").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const keys=["stock_quantity","reserved","available"];
+    const rows=[["تقرير المخزون المركزي"],["آخر مزامنة",new Date(fetchedAt).toLocaleString("ar-EG")],["تاريخ التصدير",new Date().toLocaleString("ar-EG")],["الصنف","الكود","الوزن (جم)","الرصيد الفعلي","المحجوز","المتاح"],...products.map(p=>[p.name,p.sku,Number(p.sku.slice(-3)),p.stock_quantity,p.reserved,p.available]),["إجمالي العبوات","","",...keys.map(k=>products.reduce((a,p)=>a+p[k],0))],["إجمالي الوزن (كجم)","","",...keys.map(k=>products.reduce((a,p)=>a+p[k]*Number(p.sku.slice(-3)),0)/1000)]];
+    const sheet=rows.map((row,i)=>'<row r="'+(i+1)+'">'+row.map((v,j)=>{const ref=String.fromCharCode(65+j)+(i+1);return typeof v==="number"?'<c r="'+ref+'"><v>'+v+'</v></c>':'<c r="'+ref+'" t="inlineStr"><is><t>'+xml(v)+'</t></is></c>'}).join("")+'</row>').join("");
+    const ns="http://schemas.openxmlformats.org/spreadsheetml/2006/main",rel="http://schemas.openxmlformats.org/officeDocument/2006/relationships",pkg="http://schemas.openxmlformats.org/package/2006/relationships";
+    const files={
+      "[Content_Types].xml":'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
+      "_rels/.rels":'<Relationships xmlns="'+pkg+'"><Relationship Id="rId1" Type="'+rel+'/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+      "xl/workbook.xml":'<workbook xmlns="'+ns+'" xmlns:r="'+rel+'"><sheets><sheet name="المخزون المركزي" sheetId="1" r:id="rId1"/></sheets></workbook>',
+      "xl/_rels/workbook.xml.rels":'<Relationships xmlns="'+pkg+'"><Relationship Id="rId1" Type="'+rel+'/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+      "xl/worksheets/sheet1.xml":'<worksheet xmlns="'+ns+'"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"/></sheetViews><cols><col min="1" max="2" width="28" customWidth="1"/><col min="3" max="6" width="18" customWidth="1"/></cols><sheetData>'+sheet+'</sheetData></worksheet>'
+    };
+    const parts=[],central=[];let offset=0,cs=0;
+    const header=(n,fields)=>{const b=new Uint8Array(n),d=new DataView(b.buffer);for(const [pos,size,val] of fields)size===2?d.setUint16(pos,val,true):d.setUint32(pos,val,true);return b};
+    for(const [name,content] of Object.entries(files)){
+      const n=enc.encode(name),b=enc.encode(content);let crc=0xffffffff;for(const x of b){crc^=x;for(let j=0;j<8;j++)crc=(crc>>>1)^((crc&1)?0xedb88320:0)}crc=(crc^0xffffffff)>>>0;
+      const h=header(30,[[0,4,0x04034b50],[4,2,20],[12,2,33],[14,4,crc],[18,4,b.length],[22,4,b.length],[26,2,n.length]]);
+      const c=header(46,[[0,4,0x02014b50],[4,2,20],[6,2,20],[14,2,33],[16,4,crc],[20,4,b.length],[24,4,b.length],[28,2,n.length],[42,4,offset]]);
+      parts.push(h,n,b);central.push(c,n);offset+=h.length+n.length+b.length;cs+=c.length+n.length;
+    }
+    const count=Object.keys(files).length,end=header(22,[[0,4,0x06054b50],[8,2,count],[10,2,count],[12,4,cs],[16,4,offset]]);
+    const blob=new Blob([...parts,...central,end],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),filename="ELHELW-CENTRAL-STOCK-"+new Date().toISOString().slice(0,10)+".xlsx";
+    if(window.Capacitor?.isNativePlatform?.()){
+      await window.APP_PDF_READY;
+      if(!window.APP_FILESYSTEM?.writeFile||!window.APP_SHARE?.share)throw Error("خدمة حفظ الملفات غير متاحة");
+      const bytes=new Uint8Array(await blob.arrayBuffer());let binary="";for(const b of bytes)binary+=String.fromCharCode(b);
+      const saved=await window.APP_FILESYSTEM.writeFile({path:"ELHELW-COFFEE/"+filename,data:btoa(binary),directory:window.APP_FILESYSTEM_DIRECTORY.Cache,recursive:true});
+      await window.APP_SHARE.share({title:filename,url:saved.uri,dialogTitle:"حفظ أو مشاركة ملف Excel"});
+    }else{const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
+  }
   async function onlineStock(){
     if(profile.role!=="admin")return setContent('<div class="panel-card error">غير مصرح لك بعرض مخزون الأونلاين.</div>');
-    setContent(section("مخزون الأونلاين",'<div class="inline-actions"><button id="refresh-online-stock" class="secondary">تحديث من الموقع ↻</button><button id="export-online-stock" disabled>تصدير PDF</button></div>')+
+    setContent(section("مخزون الأونلاين",'<div class="inline-actions"><button id="refresh-online-stock" class="secondary">تحديث من الموقع ↻</button><button id="export-online-stock" disabled>تصدير PDF</button><button id="export-online-excel" disabled>تصدير Excel</button></div>')+
       '<div class="panel-card"><div id="online-stock-state" class="hint">جارٍ جلب المخزون من الموقع...</div></div>');
-    const btn=$("refresh-online-stock"),state=$("online-stock-state"),exportBtn=$("export-online-stock");
+    const btn=$("refresh-online-stock"),state=$("online-stock-state"),exportBtn=$("export-online-stock"),excelBtn=$("export-online-excel");
     if(btn)btn.onclick=()=>loadOnlineStock();
     async function loadOnlineStock(){
       if(btn){btn.disabled=true;btn.textContent="جارٍ التحديث...";}
-      exportBtn.disabled=true;state.textContent="جارٍ الاتصال بـ WooCommerce...";
+      exportBtn.disabled=true;excelBtn.disabled=true;state.textContent="جارٍ الاتصال بالمخزون المركزي...";
       try{
         const {data,error}=await sb.functions.invoke("woocommerce-stock-read",{body:{}});
         if(error)throw error;
         if(!data||!Array.isArray(data.products))throw new Error(data?.error||"استجابة غير متوقعة من خدمة مخزون الأونلاين.");
         const products=data.products;
+        excelBtn.disabled=data.source!=="central_inventory"||products.length!==24;excelBtn.onclick=async()=>{excelBtn.disabled=true;try{await exportOnlineStockExcel(products,data.fetched_at)}catch(e){fail(e)}finally{excelBtn.disabled=false}};
         exportBtn.disabled=!products.length;exportBtn.onclick=async()=>{exportBtn.disabled=true;try{await exportOnlineStockPdf(products,data.fetched_at)}catch(e){fail(e)}finally{exportBtn.disabled=false}};
         const body=products.map(p=>'<tr><td>'+esc(p.name||"-")+'</td><td>'+esc(p.sku||"-")+'</td><td>'+esc(p.size||"-")+'</td><td><strong>'+qty(p.stock_quantity)+'</strong></td><td>'+esc(p.stock_status||"-")+'</td><td>'+esc(p.type||"-")+'</td></tr>').join("");
         state.innerHTML='<div class="hint">آخر مزامنة: '+esc(new Date(data.fetched_at).toLocaleString("ar-EG"))+' · '+products.length+' صنف</div>'+
