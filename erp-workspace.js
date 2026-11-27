@@ -251,7 +251,8 @@
     return list;
   };
   function entries(w){
-    return guideActions().filter(a=>a.report?w.records[a.report]!==undefined:w.permissions.includes(a.perm));
+    const delegated={"setup.supplier":["purchases.catalog"],"supplier_quote":["purchases.catalog"],"quote_book":["purchases.catalog"],"setup.item":["purchases.catalog","manufacturing.recipes"],"setup.item_unit":["purchases.catalog","manufacturing.recipes"],"setup.recipe":["manufacturing.recipes"],"setup.planning_recipe":["manufacturing.recipes"],"setup.account":["finance.setup"],"setup.treasury":["finance.setup"],"setup.period":["finance.setup"],"setup.posting_account":["finance.setup"]};
+    return guideActions().filter(a=>a.report?w.records[a.report]!==undefined:w.permissions.includes(a.perm)||delegated[a.action]?.some(k=>w.permissions.includes(k)));
   }
   const pick=(list,id)=>list.find(a=>a.action===id||a.uid===id);
   function nextStep(w,actions){
@@ -356,6 +357,7 @@
       if(screen.type==="group"){
         header(screen.title,symbols[screen.title]);actionTiles(section("العمليات"),actions.filter(a=>a.group===screen.title));return;
       }
+      if(!actions.length){body.append(el("p","حسابك نشط. لسه مفيش عمليات مسموح بها، راجع مسؤول النظام.","guide-notice"));return}
       const next=nextStep(snapshot,actions);
       const result=el("div",null,"journey-grid");const contents=el("div");const search=inputSearch(q=>{
         result.replaceChildren();contents.hidden=Boolean(q);

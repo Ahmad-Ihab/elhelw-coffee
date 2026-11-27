@@ -35,8 +35,9 @@ jobs:
           psql -v ON_ERROR_STOP=1 <<'SQL'
           create role anon nologin;
           create role authenticated nologin;
+          create role service_role nologin;
           create schema auth;
-          create table auth.users(id uuid primary key);
+          create table auth.users(id uuid primary key,email text,role text,raw_app_meta_data jsonb);
           create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
           create table public.suppliers(id uuid primary key);
           create table public.cafes(id uuid primary key);

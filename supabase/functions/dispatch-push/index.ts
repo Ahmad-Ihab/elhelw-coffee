@@ -7,7 +7,7 @@ try{
 const url=Deno.env.get("SUPABASE_URL")!, key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db=createClient(url,key);const token=req.headers.get("Authorization")?.replace(/^Bearer /i,"");
 if(!token)return new Response("Unauthorized",{status:401,headers:cors});
-if(token!==key){const {data,error}=await db.auth.getUser(token);if(error||!data.user)return new Response("Unauthorized",{status:401,headers:cors});}
+if(token!==key){const {data,error}=await db.auth.getUser(token);if(error||!data.user)return new Response("Unauthorized",{status:401,headers:cors});if(data.user.role!=="authenticated"||data.user.app_metadata?.elhelw_staff===true)return new Response("Forbidden",{status:403,headers:cors});}
 const account=JSON.parse(Deno.env.get("FIREBASE_SERVICE_ACCOUNT")!);
 const jwt=new JWT({email:account.client_email,key:account.private_key,scopes:["https://www.googleapis.com/auth/firebase.messaging"]});
 const access=await jwt.getAccessToken();

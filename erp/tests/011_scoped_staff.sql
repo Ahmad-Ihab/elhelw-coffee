@@ -1,0 +1,32 @@
+begin;
+do $$
+declare owner_id uuid:=gen_random_uuid(); buyer uuid:=gen_random_uuid(); outsider uuid:=gen_random_uuid(); ticket uuid:=gen_random_uuid();
+ p jsonb; w jsonb; rid uuid; code0 text; denied boolean;
+begin
+ insert into auth.users(id) values(owner_id),(outsider);
+ insert into erp.roles(code,name) values('ERP_ADMIN','Owner') returning id into rid;
+ insert into erp.user_roles values(owner_id,rid);
+ perform set_config('request.jwt.claim.sub',owner_id::text,true);
+ p:=jsonb_build_object('request',ticket,'name','Buyer','email','staff@example.invalid','permissions','["purchases.catalog","purchases.manage","purchases.receive"]'::jsonb);
+ if (public.elhelw_staff_manage('prepare',p)->>'created')::boolean then raise exception 'Wrong create status';end if;
+ insert into auth.users(id,email,role,raw_app_meta_data) values(buyer,'staff@example.invalid','elhelw_staff',jsonb_build_object('elhelw_staff',true,'staff_request',ticket));
+ set constraints auth.elhelw_enrol_employee immediate;
+ if public.elhelw_staff_manage('prepare',p)->>'created'<>'true' then raise exception 'Missing idempotent enrolment';end if;
+ w:=public.elhelw_staff_run(buyer,'workspace','{}');
+ if w->>'staff_name'<>'Buyer' or w->'permissions' ? 'roles.manage' or not(w->'choices' ? 'suppliers') or w->'records' ? 'trial' then raise exception 'Incorrect supplier workspace';end if;
+ perform public.elhelw_staff_run(buyer,'command',jsonb_build_object('p_action','setup.supplier','p_request',gen_random_uuid(),'p_payload',jsonb_build_object('code','S','name','Supplier')));
+ denied:=false;begin perform public.elhelw_staff_run(buyer,'command',jsonb_build_object('p_action','setup.account','p_request',gen_random_uuid(),'p_payload',jsonb_build_object('code','C','name','Cash','kind','asset')));exception when insufficient_privilege then denied:=true;end;
+ if not denied then raise exception 'Non-finance employee accepted';end if;
+ perform set_config('request.jwt.claim.sub',owner_id::text,true);
+ perform public.elhelw_staff_manage('update',jsonb_build_object('id',buyer,'revision',1,'enabled',true,'permissions','["finance.read"]'::jsonb));
+ w:=public.elhelw_staff_run(buyer,'workspace','{}');
+ if w->'permissions'<> '["finance.read"]'::jsonb or w->'choices' ? 'quotes' or not(w->'records' ? 'trial') then raise exception 'Changed rights not enforced';end if;
+ perform set_config('request.jwt.claim.sub',outsider::text,true);denied:=false;
+ begin perform public.elhelw_staff_manage('list','{}');exception when insufficient_privilege then denied:=true;end;
+ if not denied then raise exception 'Staff manager access mismatch';end if;
+ perform set_config('request.jwt.claim.sub',owner_id::text,true);
+ perform public.elhelw_staff_manage('update',jsonb_build_object('id',buyer,'revision',2,'enabled',false,'permissions','[]'::jsonb));
+ denied:=false;begin perform public.elhelw_staff_run(buyer,'workspace','{}');exception when insufficient_privilege then denied:=true;end;
+ if not denied or has_function_privilege('authenticated','public.elhelw_staff_run(uuid,text,jsonb)','EXECUTE') or has_function_privilege('anon','public.elhelw_staff_manage(text,jsonb)','EXECUTE') then raise exception 'Suspension or grants mismatch';end if;
+end $$;
+rollback;

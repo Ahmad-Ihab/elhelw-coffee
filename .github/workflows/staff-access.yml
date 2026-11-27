@@ -1,0 +1,40 @@
+name: Staff sign-in and scoped access
+on:
+  workflow_dispatch:
+  push:
+    branches: [erp-development]
+    paths:
+      - 'erp/sql/038_scoped_staff.draft.sql'
+      - 'supabase/functions/staff-access/**'
+      - 'erp/tests/staff-auth.mjs'
+      - '.github/workflows/staff-access.yml'
+permissions:
+  contents: read
+jobs:
+  accounts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start isolated Auth, REST and Edge services
+        run: |
+          set -euo pipefail
+          lab="$RUNNER_TEMP/scoped-staff"
+          mkdir -p "$lab"
+          supabase init --workdir "$lab"
+          mkdir -p "$lab/supabase/functions"
+          cp -r supabase/functions/staff-access "$lab/supabase/functions/"
+          supabase start --workdir "$lab" -x studio,postgres-meta,realtime,imgproxy,storage-api,logflare,vector,supavisor,mailpit > "$RUNNER_TEMP/staff-start.log" 2>&1 || { tail -20 "$RUNNER_TEMP/staff-start.log"; exit 1; }
+          supabase status --workdir "$lab" -o json > "$RUNNER_TEMP/staff-local.json"
+      - name: Install ERP schema for the isolated company
+        run: |
+          set -euo pipefail
+          export PGHOST=127.0.0.1 PGPORT=54322 PGUSER=postgres PGDATABASE=postgres PGPASSWORD=postgres
+          psql -v ON_ERROR_STOP=1 -c 'create table public.suppliers(id uuid primary key); create table public.cafes(id uuid primary key); create table public.distributors(id uuid primary key);'
+          for f in erp/sql/*.draft.sql; do psql -q -v ON_ERROR_STOP=1 -f "$f"; done
+          psql -c "notify pgrst, 'reload schema'"
+      - name: Create, sign in, change permissions and suspend test employees
+        run: node erp/tests/staff-auth.mjs "$RUNNER_TEMP/staff-local.json"

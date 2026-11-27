@@ -7,7 +7,7 @@ const root=path.resolve(__dirname,"../..");
 const read=p=>fs.readFileSync(path.join(root,p),"utf8");
 const dataDir=path.dirname(require.resolve("@electric-sql/pglite"));
 const archive=name=>gzipSync(fs.readFileSync(path.join(dataDir,name))).toString("base64");
-const fixture=`create role anon; create role authenticated; create schema auth;create table auth.users(id uuid primary key);
+const fixture=`create role anon; create role authenticated; create role service_role; create schema auth;create table auth.users(id uuid primary key,email text,role text,raw_app_meta_data jsonb);
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  create table public.suppliers(id uuid primary key);create table public.cafes(id uuid primary key);create table public.distributors(id uuid primary key);`;
 async function main(){

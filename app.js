@@ -48,8 +48,33 @@
     if(session) await loadUser(session.user); else $("auth-view").classList.remove("hidden");
     sb.auth.onAuthStateChange((event,s)=>{if(event==="SIGNED_OUT"&&!s){location.reload()}});
   }
+  let staffRevision=null, staffPoll=null;
+  function staffClient(){
+    return {rpc:async(name,args={})=>{try{return {data:await window.ElhelwStaff.request(sb,name==="elhelw_erp_workspace"?"workspace":"command",args)}}catch(error){return {error}}}};
+  }
+  async function staffWorkspace(){
+    const root=$("content"),host=document.createElement("section");host.id="erp-workspace";root.replaceChildren(host);
+    await window.renderElhelwERP(host,staffClient(),sessionUser.id,"",{updated:w=>{
+      staffRevision=w.staff_revision;$("welcome-title").textContent="أهلاً "+w.staff_name;
+    }});
+  }
+  async function loadStaff(){
+    profile={role:"staff"};activeTab="staffWorkspace";erpAvailable=false;erpSnapshot=null;
+    $("auth-view").classList.add("hidden");$("workspace").classList.remove("hidden");$("tabs").replaceChildren();
+    $("ux-bottom")?.remove();$("workspace").querySelector(".welcome").classList.remove("hidden");
+    $("role-label").textContent="مساحة الموظف";$("welcome-title").textContent="عملي";$("welcome-subtitle").textContent="";
+    const logout=document.createElement("button");logout.className="secondary";logout.textContent="خروج";logout.onclick=()=>sb.auth.signOut();
+    $("user-area").replaceChildren(logout);$("refresh-btn").onclick=staffWorkspace;
+    await staffWorkspace();
+    let checking=false;
+    const recheck=async()=>{if(checking||document.hidden||profile?.role!=="staff")return;checking=true;
+      try{const state=await window.ElhelwStaff.request(sb,"status");if(state.revision!==staffRevision)await staffWorkspace();}
+      catch{staffRevision=null;await staffWorkspace()}finally{checking=false}};
+    clearInterval(staffPoll);staffPoll=setInterval(recheck,30000);document.addEventListener("visibilitychange",recheck);
+  }
   async function loadUser(user){
     sessionUser=user;
+    if(user.role==="elhelw_staff"||user.app_metadata?.elhelw_staff===true)return loadStaff();
     const {data:p,error}=await sb.from("profiles").select("*").eq("id",user.id).single();
     if(error)throw error; profile=p;
     if(profile.role==="distributor"){
@@ -85,8 +110,9 @@
   const paths={message:'<path d="M21 11a8 8 0 0 1-8 8H4l2-4a8 8 0 1 1 15-4Z"/>',bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',cart:'<circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2 3h3l3 13h12l2-9H6"/>',factory:'<path d="M3 21V9l7 4V9l7 4V3h4v18Z"/><path d="M7 17h2m4 0h2"/>',box:'<path d="m3 7 9-5 9 5v10l-9 5-9-5Z M3 7l9 5 9-5M12 12v10"/>',wallet:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M21 10h-6v5h6"/>',truck:'<path d="M2 5h13v13H2ZM15 10h4l3 4v4h-7"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/>',clipboard:'<rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 2h6v5H9ZM9 12h6m-6 4h6"/>',settings:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',coffee:'<path d="M3 8h14v7a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5ZM17 9h2a3 3 0 0 1 0 6h-2M7 2v3m5-3v3"/>',home:'<path d="m3 10 9-8 9 8v11H3Z M9 21v-8h6v8"/>',chart:'<path d="M3 3v18h18M7 16l5-6 4 3 5-8"/>',user:'<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>'};
   const glyph=k=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(paths[k]||paths.clipboard)+'</svg>';
   let expandedGroup="";
-  function goScreen(id){if(id==="dashboard")returnTab="dashboard";if(!profileComplete()&&id!=="profile"&&!(profile.role==="admin"&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();window.scrollTo(0,0);return render()}
+  function goScreen(id){if(profile?.role==="staff")return;if(id==="dashboard")returnTab="dashboard";if(!profileComplete()&&id!=="profile"&&!(profile.role==="admin"&&id==="people"))return toast("أكمل بيانات الحساب أولاً");activeTab=id;if(id==="dashboard")expandedGroup="";renderTabs();window.scrollTo(0,0);return render()}
   window.elhelwHandleBack=function(){
+    if(profile?.role==="staff")return $("erp-workspace")?.guideBack?.()||false;
     if(!profile||!$("tabs")||!$("tabs").getClientRects().length)return false;
     if($("chat-person-dialog")?.open){$("chat-person-dialog").close();return true}
     const cancel=document.querySelector("#content form [data-cancel]");if(cancel){cancel.click();return true}
@@ -94,9 +120,9 @@
     const back=$("tabs").querySelector("[data-back]");if(back){back.click();return true}
     goScreen("dashboard");return true;
   };
-  const screenArt = {orders:"orders",cafes:"sales",products:"goods",returns:"return",roasting:"roast",recipes:"recipe",factory:"factory",productionCalculator:"calc",inventory:"stock",rawStock:"materials",packaging:"goods",onlineStock:"online",sampleInventory:"coffee",finance:"finance",commissions:"prices",distributors:"delivery",people:"team",procurement:"supplier",materials:"materials",supplierOrders:"buy",adminTools:"setup",samples:"coffee",reports:"reports",chat:"chat",notifications:"alerts",profile:"profile",erpWorkspace:"plan"};
+  const screenArt = {staffAccess:"access",orders:"orders",cafes:"sales",products:"goods",returns:"return",roasting:"roast",recipes:"recipe",factory:"factory",productionCalculator:"calc",inventory:"stock",rawStock:"materials",packaging:"goods",onlineStock:"online",sampleInventory:"coffee",finance:"finance",commissions:"prices",distributors:"delivery",people:"team",procurement:"supplier",materials:"materials",supplierOrders:"buy",adminTools:"setup",samples:"coffee",reports:"reports",chat:"chat",notifications:"alerts",profile:"profile",erpWorkspace:"plan"};
   const departmentArt={cart:"orders",factory:"factory",box:"stock",wallet:"finance",truck:"delivery",clipboard:"buy",settings:"setup",coffee:"coffee"};
-  const directoryLabels={erpWorkspace:"دورة الإنتاج وعمليات الشركة",roasting:"التحميص",recipes:"التوليفات",factory:"تصنيع وتعبئة",rawStock:"مخزون الخامات",packaging:"مخزون التعبئة والتغليف",materials:"الخامات وأسعار الموردين",supplierOrders:"طلبيات الموردين",procurement:"الموردون",reports:"التقارير",chat:"المحادثات",notifications:"الإشعارات",onlineStock:"مخزون الأونلاين"};
+  const directoryLabels={staffAccess:"الموظفون والصلاحيات",erpWorkspace:"دورة الإنتاج وعمليات الشركة",roasting:"التحميص",recipes:"التوليفات",factory:"تصنيع وتعبئة",rawStock:"مخزون الخامات",packaging:"مخزون التعبئة والتغليف",materials:"الخامات وأسعار الموردين",supplierOrders:"طلبيات الموردين",procurement:"الموردون",reports:"التقارير",chat:"المحادثات",notifications:"الإشعارات",onlineStock:"مخزون الأونلاين"};
   let erpSnapshot=null, erpEntry="", returnTab="dashboard";
   function screenTile(label,picture,attr,value,sub=""){
     return '<button type="button" class="journey-tile" '+attr+'="'+esc(value)+'"><span class="scene">'+window.elhelwArt(picture)+'</span><span class="tile-copy"><strong>'+esc(label)+'</strong>'+(sub?'<small>'+esc(sub)+'</small>':'')+'</span></button>';
@@ -110,7 +136,7 @@
     if(home){
       const next=erpSnapshot&&window.ElhelwGuide.next(erpSnapshot);
       const erpEntries=erpSnapshot?window.ElhelwGuide.entries(erpSnapshot):[];
-      const shortcuts=admin?["onlineStock","orders","inventory"]:["orders","cafes","inventory"];
+      const shortcuts=erpSnapshot?.can_manage_staff?["staffAccess","onlineStock","orders"]:admin?["onlineStock","orders","inventory"]:["orders","cafes","inventory"];
       const main=erpAvailable?'<button class="home-feature" data-erp="'+esc(next?.id||"")+'"><span class="feature-text"><small>'+ (next?'الخطوة التالية · '+esc(next.stage):'عمليات الشركة')+'</small><strong>'+esc(next?.title||"افتح دورة الإنتاج")+'</strong><span>'+esc(next?.hint||"تابع أوامر الشراء والإنتاج.")+'</span><b>متابعة ←</b></span><span class="hero-art">'+window.elhelwArt(next?.art||"factory")+'</span></button>':
         '<button class="home-feature" data-tab="orders"><span class="feature-text"><small>المبيعات والتوزيع</small><strong>طلبياتك</strong><span>تابع الطلبات والتسليم من مكان واحد.</span><b>فتح الطلبيات ←</b></span><span class="hero-art">'+window.elhelwArt("delivery")+'</span></button>';
       tabs.innerHTML='<label class="search-box"><span aria-hidden="true">⌕</span><input id="app-search" type="search" placeholder="بتدور على إيه؟" aria-label="ابحث في التطبيق كله"></label><div id="directory-matches" class="journey-grid"></div><div id="home-sections">'+main+
@@ -119,6 +145,7 @@
         shortcut("reports")+shortcut("chat")+shortcut("notifications")+shortcut("profile")+'</div></div>';
       const index=[];for(const [group,,ids] of groups)for(const id of ids)index.push({label:labels[id],group,attr:"data-tab",id,art:screenArt[id]});
       for(const id of ["reports","chat","notifications","profile"])index.push({label:labels[id],group:"التطبيق",attr:"data-tab",id,art:screenArt[id]});
+      if(erpSnapshot?.can_manage_staff)index.unshift({label:"إضافة موظف وتعديل الصلاحيات",group:"الموظفون والصلاحيات",attr:"data-tab",id:"staffAccess",art:"access"});
       const tasks=[["orders","new-order","إنشاء طلبية توزيع"],["cafes","add-cafe","إضافة كافيه"],["returns","new-return","تسجيل مرتجع"],["samples","new-sample","تسجيل عينة"],["products","add-product","إضافة منتج للبيع"],["commissions","add-commission","تحديد عمولة"],["distributors","add-dist","إضافة موزع"]];
       for(const [screen,id,label] of tasks)if(groups.some(g=>g[2].includes(screen)))index.push({label,group:labels[screen],art:screenArt[screen],attr:"data-task",id:screen+"/"+id});
       if(erpAvailable)index.unshift({label:labels.erpWorkspace,group:"دورة الإنتاج",attr:"data-erp",id:"",art:"factory"});
@@ -226,6 +253,8 @@
   async function groupConversation(group,contacts){const g=(await commQuery(sb.from("chat_groups").select("*").eq("id",group)))[0];const list=(await commQuery(sb.from("chat_group_messages").select("*").eq("group_id",group).order("created_at",{ascending:false}).limit(200))).reverse();if(activeTab!=="chat"||groupPeer!==group)return;const names=Object.fromEntries(contacts.map(p=>[p.id,p.full_name]));chatLayout("group-"+group,g?.name||"مجموعة",'<span class="chat-avatar">'+glyph("message")+'</span>',"محادثة جماعية",list.map(x=>'<div class="chat-bubble '+(x.sender===sessionUser.id?"mine":"")+'"><strong>'+esc(x.sender===sessionUser.id?"أنت":names[x.sender]||"عضو المجموعة")+'</strong><div class="chat-body">'+esc(isChatImage(x.attachment)&&x.body==="مرفق"?"":x.body)+'</div>'+attachmentLink(x)+'<small>'+new Date(x.created_at).toLocaleString("ar-EG")+'</small></div>').join(""),async(body,file)=>{const attachment=await uploadChatFile(file);await commQuery(sb.from("chat_group_messages").insert({group_id:group,body:body||"مرفق",attachment}))},()=>{groupPeer=null;communications().catch(fail)})}
 
   async function render(){
+    if(profile?.role==="staff")return staffWorkspace();
+    if(activeTab==="staffAccess"&&erpSnapshot?.can_manage_staff){setContent('<section id="staff-access"></section>');return window.ElhelwStaff.manage($("staff-access"),sb);}
     startCommunications();
     if(activeTab==='chat'||activeTab==='notifications')return communications().catch(fail);
     if(profile && !profileComplete() && activeTab!=="profile" && !(profile.role==="admin"&&activeTab==="people")){activeTab="profile";renderTabs();return profilePage();}
