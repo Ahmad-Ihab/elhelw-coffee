@@ -4,7 +4,7 @@ const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const out = path.join(root, "www");
-const files = ["index.html", "app.js", "styles.css", "config.js", "production-calculator.js", "procurement.js", "erp-workspace.js", "interface.css", "illustrations.js", "staff.js", "production-calculator.css", "sw.js", "manifest.webmanifest"];
+const files = ["index.html", "app.js", "styles.css", "config.js", "production-calculator.js", "procurement.js", "erp-workspace.js", "android-updates.js", "interface.css", "illustrations.js", "staff.js", "production-calculator.css", "sw.js", "manifest.webmanifest"];
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });

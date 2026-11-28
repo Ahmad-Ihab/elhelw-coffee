@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Test in-app update discovery and download states
+        run: node --test erp/tests/android-updates.test.cjs
+
       - name: Prepare web app
         run: npm run build:web
 
@@ -98,7 +101,7 @@ jobs:
           apk=android/app/build/outputs/apk/release/app-release.apk
           sdk_bin=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           mkdir -p "$RUNNER_TEMP/previous"
-          gh release download erp-v2.1.0-207 --pattern app-release.apk --dir "$RUNNER_TEMP/previous"
+          gh release download erp-v2.3.0-209 --pattern app-release.apk --dir "$RUNNER_TEMP/previous"
           previous="$RUNNER_TEMP/previous/app-release.apk"
           for file in "$previous" "$apk"; do
             "$sdk_bin/apksigner" verify --verbose --print-certs "$file" > "$file.cert"
@@ -106,7 +109,10 @@ jobs:
           done
           diff <(grep '^Signer #1 certificate SHA-256 digest:' "$previous.cert") <(grep '^Signer #1 certificate SHA-256 digest:' "$apk.cert")
           grep -F "package: name='com.elhelwcoffee.app' versionCode='${{ steps.app_version.outputs.code }}' versionName='${{ steps.app_version.outputs.name }}'" "$apk.badging"
-          test "${{ steps.app_version.outputs.code }}" -gt 55
+          test "${{ steps.app_version.outputs.code }}" -gt 57
+          if "$sdk_bin/aapt" dump permissions "$apk" | grep -Fq android.permission.REQUEST_INSTALL_PACKAGES; then
+            echo "Unexpected package installation permission"; exit 1
+          fi
           sha256sum "$apk"
           unzip -tqq "$apk"
 
@@ -161,7 +167,7 @@ jobs:
       - name: Fetch previous release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download erp-v2.1.0-207 --pattern app-release.apk --dir previous
+        run: gh release download erp-v2.3.0-209 --pattern app-release.apk --dir previous
       - name: Permit hardware acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -174,3 +180,32 @@ jobs:
           target: google_apis
           arch: x86_64
           script: bash scripts/check-android-upgrade.sh
+
+  erp-update-channel:
+    if: github.ref == 'refs/heads/erp-development'
+    needs: android-upgrade
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the verified Android update to ERP installations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(jq -er .versionName android-version.json)
+          code=$(jq -er .versionCode android-version.json)
+          tag="erp-v$version-$GITHUB_RUN_NUMBER"
+          metadata=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")
+          digest=$(jq -er '.assets[] | select(.name=="app-release.apk") | .digest | select(test("^sha256:[0-9a-f]{64}$"))' <<< "$metadata")
+          test "$(jq -r .target_commitish <<< "$metadata")" = "$GITHUB_SHA"
+          note="$RUNNER_TEMP/erp-update.json"
+          jq -n --arg tag "$tag" --arg version "$version" --argjson code "$code" --arg sha "${digest#sha256:}" \
+            '{tag:$tag,versionName:$version,versionCode:$code,sha256:$sha}' > "$note"
+          channel=erp-android-current
+          if gh release view "$channel" --json body > "$RUNNER_TEMP/previous-feed.json"; then
+            previous=$(jq -er '.body | fromjson | .versionCode' "$RUNNER_TEMP/previous-feed.json")
+            if (( previous > code )); then exit 0; fi
+            gh release edit "$channel" --notes-file "$note" --prerelease --latest=false
+          else
+            gh release create "$channel" --target "$GITHUB_SHA" --title "Elhelw Distribution – ERP Android update channel" --notes-file "$note" --prerelease --latest=false
+          fi

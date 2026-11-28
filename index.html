@@ -19,6 +19,7 @@
       <div class="brand"><img class="brand-logo" src="./assets/brand-logo.svg" alt="بن الحلو"><div><small>إدارة التوزيع</small></div></div>
       <div id="user-area" class="user-area"></div>
     </header>
+    <aside id="app-update" class="update-panel" aria-label="تحديث التطبيق" hidden><span id="update-message" role="status"></span> <button id="update-action" type="button" class="secondary" hidden></button></aside>
     <main id="main">
       <section id="setup-warning" class="panel hidden">
         <h2>إعداد الاتصال مطلوب</h2>
@@ -44,7 +45,7 @@
         <div id="content"></div>
       </section>
     </main>
-    <footer>ELHELW COFFEE · Elhelw Distribution</footer>
+    <footer>ELHELW COFFEE · Elhelw Distribution <button id="check-app-update" type="button" class="secondary" hidden>التحقق من تحديث التطبيق</button></footer>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./pdf-plugins.js"></script>
@@ -55,6 +56,7 @@
   <script src="./illustrations.js"></script><script>document.getElementById("login-art").innerHTML=window.elhelwArt("coffee");</script>
   <script src="./staff.js"></script>
   <script src="./erp-workspace.js"></script>
+  <script src="./android-updates.js"></script>
   <script src="./app.js"></script><script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js"));</script>
 </body>
 </html>

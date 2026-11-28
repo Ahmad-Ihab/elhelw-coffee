@@ -82,3 +82,7 @@ body .tab{background:#e8eee2;color:var(--ink)}body .tab.active{background:var(--
 .supplier-list{margin-block:12px}
 .supplier-price-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;margin-block:8px;background:var(--paper);border:1px solid var(--line);border-radius:14px}
 .supplier-price-row>div{min-width:0;overflow-wrap:anywhere}.supplier-price-row span{display:block;color:var(--muted)}.supplier-price-row button{flex:none}
+
+.update-panel{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:10px auto;padding:10px 16px;max-width:960px;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:12px;overflow-wrap:anywhere}
+.update-panel[hidden],#check-app-update[hidden],#update-action[hidden]{display:none}
+#check-app-update{margin-inline:8px}

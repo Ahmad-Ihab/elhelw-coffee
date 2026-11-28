@@ -1,9 +1,10 @@
-const CACHE = "elhelw-coffee-v34";
+const CACHE = "elhelw-coffee-v35";
 const CORE = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./android-updates.js",
   "./production-calculator.css",
   "./production-calculator.js",
   "./procurement.js",
