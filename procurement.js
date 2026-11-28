@@ -34,10 +34,28 @@
     orders=orders.map(o=>({...o,items:items.filter(i=>i.purchase_order_id===o.id)})).sort((a,b)=>b.order_number-a.order_number);
   }
   function supplierPage(){
-    const body=suppliers.map(s=>'<tr><td><b>'+esc(s.name)+'</b><div class="hint">'+esc(s.contact_name||"")+'</div></td><td>'+esc(s.phone||"-")+'</td><td>'+(s.active?"نشط":"موقوف")+'</td><td><button class="secondary" data-supplier="'+s.id+'">تعديل</button></td></tr>').join("");
+    const body=suppliers.map(s=>'<tr><td><button class="secondary" data-file="'+s.id+'">'+esc(s.name)+'</button><div class="hint">'+esc(s.contact_name||"")+'</div></td><td>'+esc(s.phone||"-")+'</td><td>'+(s.active?"نشط":"موقوف")+'</td><td><button class="secondary" data-supplier="'+s.id+'">تعديل</button></td></tr>').join("");
     set(panel("الموردون",'<p class="muted">إدارة الموردين الذين يتم شراء خامات التصنيع منهم.</p>'+ '<div class="table-wrap"><table><thead><tr><th>المورد</th><th>الهاتف</th><th>الحالة</th><th></th></tr></thead><tbody>'+(body||'<tr><td colspan="4" class="empty">لم تتم إضافة موردين بعد</td></tr>')+'</tbody></table></div>',btn("add-supplier","إضافة مورد")));
     q("add-supplier").onclick=()=>supplierForm();
+    root.querySelectorAll("[data-file]").forEach(b=>b.onclick=()=>supplierFile(b.dataset.file));
     root.querySelectorAll("[data-supplier]").forEach(b=>b.onclick=()=>supplierForm(suppliers.find(x=>x.id===b.dataset.supplier)));
+  }
+  function supplierFile(id){
+    const s=suppliers.find(s=>s.id===id);
+    if(!s)return supplierPage();
+    const offers=prices.filter(p=>p.supplier_id===id);
+    const lines=offers.map(p=>{
+      const m=materials.find(m=>m.id===p.raw_material_id);
+      return '<div class="supplier-price-row"><div><strong>'+esc(m?.name||"خامة")+'</strong><span>'+num(p.unit_price)+' ج.م / كجم</span></div>'+
+        (s.active&&m?.active?'<button type="button" class="secondary" data-edit-price="'+m.id+'">تعديل السعر</button>':'')+'</div>';
+    }).join("");
+    const available=materials.filter(m=>s.active&&m.active&&!offers.some(p=>p.raw_material_id===m.id));
+    set(panel(esc(s.name),'<h3>الأصناف وأسعار الوحدة</h3>'+(lines||'<p class="muted">لسه مفيش أسعار مسجلة للمورد ده.</p>')+
+      (available.length?select("اختار صنف لإضافة سعره","new_material",available.map(m=>({value:m.id,label:m.name}))):''),btn("supplier-back","رجوع للموردين")));
+    q("supplier-back").onclick=supplierPage;
+    root.querySelectorAll("[data-edit-price]").forEach(b=>b.onclick=()=>priceForm(b.dataset.editPrice,id));
+    const picker=root.querySelector('[name=new_material]');
+    if(picker)picker.onchange=()=>{if(picker.value)priceForm(picker.value,id)};
   }
   function supplierForm(s){
     const html='<form id="supplier-form" class="form-panel"><h3>'+(s?"تعديل المورد":"إضافة مورد جديد")+'</h3><div class="form-grid">'+
@@ -65,15 +83,27 @@
     root.insertAdjacentHTML("afterbegin",html);const f=q("material-form");f.querySelector("[data-close]").onclick=()=>f.remove();
     f.onsubmit=async e=>{e.preventDefault();const d=new FormData(f);try{await save("raw_materials",{name:String(d.get("name")).trim(),unit:d.get("unit")});notify("تمت إضافة الخامة");await render()}catch(x){showError(x)}};
   }
-  function priceForm(materialId){
+  function priceForm(materialId,profileId){
     if(!suppliers.some(s=>s.active))return notify("أضف موردًا نشطًا أولاً");
+    q("price-form")?.remove();
     const existing=prices.filter(p=>p.raw_material_id===materialId);
     const html='<form id="price-form" class="form-panel"><h3>أسعار الموردين — '+esc(materials.find(m=>m.id===materialId)?.name)+'</h3><div class="form-grid">'+
       select("المورد","supplier_id",suppliers.filter(s=>s.active).map(s=>({value:s.id,label:s.name})))+
-      input("سعر الكيلو بالجنيه","unit_price","number",'required min="0" step="0.001')+
+      input("سعر الكيلو بالجنيه","unit_price","number",'required min="0" step="0.001"')+
       '</div><div class="form-actions"><button class="primary">حفظ السعر</button><button type="button" class="secondary" data-close>إلغاء</button></div></form>';
     root.insertAdjacentHTML("afterbegin",html);const f=q("price-form");f.querySelector("[data-close]").onclick=()=>f.remove();
-    f.onsubmit=async e=>{e.preventDefault();const d=new FormData(f),supplierId=d.get("supplier_id"),price=Number(d.get("unit_price"));try{const old=existing.find(p=>p.supplier_id===supplierId);const res=old?await sb.from("supplier_material_prices").update({unit_price:price,updated_at:new Date().toISOString()}).eq("id",old.id):await sb.from("supplier_material_prices").insert({supplier_id:supplierId,raw_material_id:materialId,unit_price:price});if(res.error)throw res.error;notify("تم تحديث السعر");await render()}catch(x){showError(x)}};
+    const vendor=f.elements.supplier_id;
+    vendor.onchange=()=>{f.elements.unit_price.value=existing.find(p=>p.supplier_id===vendor.value)?.unit_price??""};
+    if(profileId){vendor.value=profileId;vendor.disabled=true;vendor.onchange()}
+    f.onsubmit=async e=>{
+      e.preventDefault();const submit=f.querySelector(".primary");if(submit.disabled)return;submit.disabled=true;
+      try{
+        const res=await sb.from("supplier_material_prices").upsert({supplier_id:vendor.value,raw_material_id:materialId,unit_price:Number(f.elements.unit_price.value),updated_at:new Date().toISOString()},{onConflict:"supplier_id,raw_material_id"});
+        if(res.error)throw res.error;
+        notify("تم تحديث السعر");
+        if(profileId){await load();if(f.isConnected)supplierFile(profileId)}else await render();
+      }catch(x){showError(x)}finally{submit.disabled=false}
+    };
   }
   function orderPage(){
     const body=orders.map(o=>{
@@ -97,7 +127,8 @@
     root.insertAdjacentHTML("afterbegin",html);const f=q("purchase-form"),lines=q("purchase-lines");
     f.querySelector("[data-close]").onclick=()=>f.remove();
     const addLine=()=>{const wrap=document.createElement("div");wrap.className="form-grid";wrap.style.cssText="border:1px solid var(--line);padding:10px;border-radius:12px;margin:8px 0";wrap.innerHTML=select("الخامة","material_id",materials.filter(m=>m.active).map(m=>({value:m.id,label:m.name})))+input("الكمية المطلوبة بالكيلو","quantity","number",'required min="0.001" step="0.001"')+input("سعر الكيلو","price","number",'required min="0" step="0.001"')+'<button type="button" class="secondary remove-line">حذف البند</button>';lines.append(wrap);wrap.querySelector(".remove-line").onclick=()=>wrap.remove();};
-    f.elements.supplier_id.onchange=()=>{const supplierId=f.elements.supplier_id.value;lines.innerHTML="";addLine();lines.querySelectorAll("select[name=material_id]").forEach(sel=>sel.onchange=()=>{const p=prices.find(x=>x.supplier_id===supplierId&&x.raw_material_id===sel.value);sel.closest(".form-grid").querySelector("input[name=price]").value=p?.unit_price??"";});};
+    lines.onchange=e=>{if(e.target.name==="material_id"){const p=prices.find(x=>x.supplier_id===f.elements.supplier_id.value&&x.raw_material_id===e.target.value);e.target.closest(".form-grid").querySelector("input[name=price]").value=p?.unit_price??""}};
+    f.elements.supplier_id.onchange=()=>{lines.replaceChildren();addLine()};
     q("add-purchase-line").onclick=addLine;addLine();
     f.onsubmit=async e=>{e.preventDefault();const supplierId=f.elements.supplier_id.value;const itemForms=[...lines.querySelectorAll(".form-grid")];const entries=itemForms.map(w=>({raw_material_id:w.querySelector("[name=material_id]").value,ordered_quantity_kg:Number(w.querySelector("[name=quantity]").value),unit_price:Number(w.querySelector("[name=price]").value)}));if(!supplierId||!entries.length||entries.some(x=>!x.raw_material_id||!x.ordered_quantity_kg||x.unit_price<0))return notify("أكمل بيانات المورد وبنود الطلبية");try{const {data:order,error}=await sb.from("supplier_purchase_orders").insert({supplier_id:supplierId,status:"ordered",expected_date:f.elements.expected_date.value||null}).select().single();if(error)throw error;const res=await sb.from("supplier_purchase_order_items").insert(entries.map(x=>({...x,purchase_order_id:order.id})));if(res.error)throw res.error;notify("تم إنشاء طلبية المورد");await render()}catch(x){showError(x)}};
   }

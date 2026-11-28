@@ -129,6 +129,8 @@
   }
   function renderTabs(){
     const admin=profile.role==="admin",groups=admin?groupsAdmin:groupsDist,labels={...Object.fromEntries(admin?adminTabs:distTabs),...directoryLabels};
+    const supplierFiles=erpAvailable&&Array.isArray(erpSnapshot?.choices?.quotes);
+    if(supplierFiles)labels.procurement="سجل الموردين القديم";
     const home=activeTab==="dashboard",menu=activeTab==="group",selected=groups.find(g=>g[0]===expandedGroup);
     const currentGroup=groups.find(g=>g[2].includes(activeTab));
     const tabs=$("tabs");document.querySelector(".welcome")?.classList.toggle("hidden",!home);
@@ -159,7 +161,9 @@
       const title=menu?selected?.[0]:labels[activeTab];
       const art=menu?departmentArt[selected?.[1]]:screenArt[activeTab];
       tabs.innerHTML='<div class="page-head"><button type="button" class="back-link" data-back aria-label="رجوع">→ رجوع</button><div><h2>'+esc(title||"")+'</h2><span class="scene">'+window.elhelwArt(art)+'</span></div></div>'+
-        (menu&&selected?'<div class="journey-grid">'+selected[2].map(shortcut).join("")+'</div>':"");
+        (menu&&selected?'<div class="journey-grid">'+
+          (supplierFiles&&selected[2].includes("procurement")?screenTile("ملفات الموردين","supplier","data-erp","supplier_profiles","الأصناف وأسعار كل مورد"):"")+
+          selected[2].map(shortcut).join("")+'</div>':"");
     }
     let nav=$("ux-bottom");if(!nav){nav=document.createElement("nav");nav.id="ux-bottom";nav.setAttribute("aria-label","التنقل الرئيسي");document.body.append(nav)}
     nav.innerHTML=[["dashboard","home","الرئيسية"],["reports","chart","التقارير"],["chat","message","المحادثات"],["notifications","bell","الإشعارات"],["profile","user","حسابي"]].map(([id,k,l])=>'<button type="button" data-tab="'+id+'" '+(activeTab===id?'aria-current="page" class="selected"':'')+'>'+glyph(k)+'<span>'+l+'</span></button>').join("");

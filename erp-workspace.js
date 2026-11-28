@@ -27,7 +27,8 @@
       fn("purchase_submit","إرسال أمر للاعتماد","purchases.manage",[choice("order","أمر الشراء","purchase_drafts")]),
       fn("purchase_decide","مراجعة اعتماد","purchases.approve",[choice("order","أمر الشراء","approvals"),choice("decision","القرار",fixed(["approved","اعتماد"],["rejected","إعادة للمراجعة"]))]),
       fn("purchase_receive","استلام تشغيلة","purchases.receive",[choice("line","البند والكمية المتبقية","purchase_lines"),lotCode,location,qty,date,field("expiry","تاريخ الصلاحية","date",true)]),
-      fn("purchase_bill","تسجيل فاتورة مورّد","purchases.manage",[supplier,code,date,many("lines","الاستلامات",[choice("receipt","الاستلام","billable")])])
+      fn("purchase_bill","تسجيل فاتورة مورّد","purchases.manage",[supplier,code,date,many("lines","الاستلامات",[choice("receipt","الاستلام","billable")])]),
+      fn("supplier_profiles","ملفات الموردين","purchases.manage",[])
     ]],
     ["التصنيع",[
       fn("linked_order","أمر تشغيل متعدد المراحل","manufacturing.post",[code,qty,many("steps","تسلسل المراحل",[choice("recipe","الوصفة","recipes"),field("direct","تكلفة مباشرة","number",true)])]),
@@ -232,7 +233,7 @@
     const id=localStorage.getItem(key)||crypto.randomUUID();localStorage.setItem(key,id);return {key,id};
   }
   const guideStages=[
-    ["supplier","الموردين","مين بيورّد لك؟",["setup.supplier"]],
+    ["supplier","الموردين","مين بيورّد لك؟",["supplier_profiles","setup.supplier"]],
     ["materials","الخامات","سجّل البن ومواد التعبئة بوحداتها.",["setup.item","setup.item_unit"]],
     ["prices","أسعار الموردين","حدّد سعر كل خامة عند المورد.",["supplier_quote","quote_book"]],
     ["buy","طلبية الشراء","اختار المورد والخامات اللي هتطلبها.",["purchase_quoted","setup.approval_rule","purchase_submit","purchase_decide"]],
@@ -252,6 +253,7 @@
   };
   function entries(w){
     const delegated={"setup.supplier":["purchases.catalog"],"supplier_quote":["purchases.catalog"],"quote_book":["purchases.catalog"],"setup.item":["purchases.catalog","manufacturing.recipes"],"setup.item_unit":["purchases.catalog","manufacturing.recipes"],"setup.recipe":["manufacturing.recipes"],"setup.planning_recipe":["manufacturing.recipes"],"setup.account":["finance.setup"],"setup.treasury":["finance.setup"],"setup.period":["finance.setup"],"setup.posting_account":["finance.setup"]};
+    delegated.supplier_profiles=["purchases.catalog","setup.configure"];
     return guideActions().filter(a=>a.report?w.records[a.report]!==undefined:w.permissions.includes(a.perm)||delegated[a.action]?.some(k=>w.permissions.includes(k)));
   }
   const pick=(list,id)=>list.find(a=>a.action===id||a.uid===id);
@@ -331,12 +333,60 @@
     function showAction(a){go({type:"action",uid:a.uid})}
     function section(title){body.append(el("h3",title,"section-title"));const div=el("div",null,"journey-grid");body.append(div);return div}
     function actionTiles(grid,list){for(const a of list)grid.append(tile(a.title,a.art,()=>showAction(a)))}
+    function supplierDirectory(){
+      const suppliers=snapshot.choices.suppliers||[], quotes=snapshot.choices.quotes||[];
+      const add=pick(actions,"setup.supplier");
+      if(add)body.append(button("إضافة مورد",()=>go({type:"action",uid:add.uid,fromDirectory:true})));
+      if(!suppliers.length){body.append(el("p","لسه مفيش موردين مسجلين.","guide-notice"));return}
+      const counts=new Map();
+      for(const q of quotes)counts.set(q.supplier,(counts.get(q.supplier)||0)+1);
+      const list=el("div",null,"journey-grid supplier-list");
+      function filter(query){
+        list.replaceChildren();
+        for(const s of suppliers.filter(s=>normalize(s.label).includes(query))){
+          const count=counts.get(s.id)||0;
+          list.append(tile(s.label,"supplier",()=>go({type:"supplier",id:s.id}),
+            count?"الأصناف المسجلة: "+count.toLocaleString("ar-EG"):"لم تُسجّل أسعار بعد"));
+        }
+        if(!list.childElementCount)list.append(el("p","مفيش مورد بالاسم ده.","muted"));
+      }
+      if(suppliers.length>1){
+        const search=inputSearch(filter);search.placeholder="ابحث باسم المورد";search.setAttribute("aria-label",search.placeholder);body.append(search);
+      }
+      body.append(list);filter("");
+    }
+    function supplierProfile(){
+      const c=snapshot.choices, vendor=c.suppliers?.find(s=>s.id===screen.id);
+      if(!vendor||!pick(actions,"supplier_profiles")){body.append(el("p","ملف المورد غير متاح.","guide-notice"));return}
+      header(vendor.label,"supplier","ملف المورد");
+      const quotes=(c.quotes||[]).filter(q=>q.supplier===vendor.id);
+      const editor=pick(actions,"supplier_quote"), addItem=pick(actions,"setup.item");
+      const edit=q=>go({type:"action",uid:editor.uid,supplierId:vendor.id,itemId:q?.item});
+      body.append(el("h3","الأصناف وأسعار الوحدة","section-title"));
+      if(!quotes.length)body.append(el("p","لسه مفيش أسعار مسجلة للمورد ده.","guide-notice"));
+      const number=new Intl.NumberFormat("ar-EG",{maximumFractionDigits:8});
+      for(const q of quotes){
+        const row=el("div",null,"supplier-price-row"),copy=el("div");
+        copy.append(el("strong",q.name),el("span",number.format(q.price)+" ج.م / "+prettyUnit(q.unit)));
+        row.append(copy);
+        if(editor){const change=button("تعديل السعر",()=>edit(q));change.setAttribute("aria-label","تعديل سعر "+q.name);row.append(change)}
+        body.append(row);
+      }
+      if(editor){
+        const used=new Set(quotes.map(q=>q.item));
+        if(c.catalog?.some(i=>!used.has(i.id)))body.append(button("إضافة صنف بسعره",()=>edit(null)));
+        if(addItem)body.append(button("تعريف صنف جديد",()=>go({type:"action",uid:addItem.uid,supplierId:vendor.id})));
+      }
+    }
     function draw(){
       body.replaceChildren();if(!snapshot)return;
       if(history.length){const b=button("→  رجوع",back);b.className="back-link";body.append(b)}
+      if(screen.type==="supplier"){supplierProfile();return}
       if(screen.type==="action"){
         const a=actions.find(x=>x.uid===screen.uid);if(!a)return;
-        header(a.title,a.art,a.group);
+        const vendor=screen.supplierId&&snapshot.choices.suppliers?.find(s=>s.id===screen.supplierId);
+        header(vendor&&a.action==="supplier_quote"?(screen.itemId?"تعديل السعر":"إضافة صنف بسعره"):a.title,a.action==="supplier_profiles"?"supplier":a.art,vendor?vendor.label:a.group);
+        if(a.action==="supplier_profiles"){supplierDirectory();return}
         if(a.report){body.append(table(snapshot.records[a.report]));return}
         if(a.action==="quote_book"){
           body.append(table((snapshot.choices.quotes||[]).map(q=>({"المورد":q.supplier_name,"الخامة":q.name,"الوحدة":prettyUnit(q.unit),"سعر الوحدة (ج.م)":q.price}))));return;
@@ -385,13 +435,24 @@
       }catch(err){if(!root.isConnected)return;status.textContent="تعذّر تحميل العمليات. "+(err.message||err);body.replaceChildren(button("إعادة المحاولة",()=>refresh(message,saved)));}
     }
     function open(action,choices){
+      const origin=screen;
+      if(origin.supplierId&&action.action==="supplier_quote"&&!origin.itemId){
+        const used=new Set((choices.quotes||[]).filter(q=>q.supplier===origin.supplierId).map(q=>q.item));
+        choices={...choices,catalog:choices.catalog.filter(i=>!used.has(i.id))};
+      }
       const form=el("form",null,"form-panel");body.append(form);
       const grid=el("div",null,"form-grid");form.append(grid);
       const read=readFields(grid,action.fields,choices),submit=el("button",action.title,"primary");submit.type="submit";form.append(submit);
       if(action.action==="purchase_quoted")quotedLines(form,choices);
       if(action.action==="supplier_quote"){
-        const refill=()=>{const q=choices.quotes?.find(q=>q.supplier===form.elements.supplier.value&&q.item===form.elements.item.value);form.elements.price.value=q?.price??"";};
-        form.elements.supplier.onchange=refill;form.elements.item.onchange=refill;
+        const itemControl=form.elements.namedItem("item");
+        const refill=()=>{const q=choices.quotes?.find(q=>q.supplier===form.elements.supplier.value&&q.item===itemControl.value);form.elements.price.value=q?.price??"";};
+        form.elements.supplier.onchange=refill;itemControl.onchange=refill;
+        if(origin.supplierId){
+          form.elements.supplier.value=origin.supplierId;form.elements.supplier.disabled=true;
+          if(origin.itemId){itemControl.value=origin.itemId;itemControl.disabled=true}
+          refill();submit.textContent="حفظ السعر";
+        }
       }
       prepareDefaults(form,action.action,choices);
       const feedback=el("div");feedback.setAttribute("role","status");form.append(feedback);
@@ -403,7 +464,13 @@
           const {data,error}=await client.rpc("elhelw_erp_command",{p_action:action.action,p_payload:payload,p_request:request.id});
           if(error)throw error;
           localStorage.removeItem(request.key);
-          if(action.action==="cutover_review"){
+          if(origin.supplierId||origin.fromDirectory){
+            if(screen===origin){
+              screen=history.pop();
+              if(origin.fromDirectory&&data?.id){history.push(screen);screen={type:"supplier",id:data.id}}
+            }
+            await refresh(action.action==="supplier_quote"?"تم حفظ سعر المورد":"تم الحفظ");
+          }else if(action.action==="cutover_review"){
             feedback.replaceChildren(el("p",data.matches?"مطابقة الأرصدة ناجحة":"توجد فروق تستدعي المراجعة"),el("p","فروق دفاتر المخزون "+data.stock_mismatches),table(data.differences));submit.disabled=false;
           }else if(action.action==="component_plan"){
             feedback.replaceChildren(table(data));submit.disabled=false;

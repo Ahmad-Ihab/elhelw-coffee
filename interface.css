@@ -79,3 +79,6 @@ body .tab{background:#e8eee2;color:var(--ink)}body .tab.active{background:var(--
 .staff-card small{display:block;color:var(--muted);overflow-wrap:anywhere}.staff-card .secondary{flex:none}
 .staff-form>.field,.staff-form>fieldset{margin-block:12px}.staff-form fieldset{border:1px solid var(--line);border-radius:13px;padding:8px 12px;min-width:0}
 .staff-toggle{display:flex;align-items:center;gap:9px;min-height:40px}.staff-toggle input[type=checkbox]{width:19px;height:19px;min-height:0;flex:none;accent-color:var(--forest)}
+.supplier-list{margin-block:12px}
+.supplier-price-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;margin-block:8px;background:var(--paper);border:1px solid var(--line);border-radius:14px}
+.supplier-price-row>div{min-width:0;overflow-wrap:anywhere}.supplier-price-row span{display:block;color:var(--muted)}.supplier-price-row button{flex:none}

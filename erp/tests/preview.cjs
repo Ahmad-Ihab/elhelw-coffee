@@ -18,6 +18,27 @@ async function main() {
       await page.getByRole("searchbox").fill(title);
       await page.getByRole("button",{name:title,exact:true}).click();
     }
+    await openTask("ملفات الموردين");
+    await page.getByRole("button",{name:"إضافة مورد",exact:true}).click();
+    await page.locator("input[name=name]").fill("مورد أسعار الاختبار");
+    await page.locator("form [type=submit]").click();
+    await page.getByRole("heading",{name:"مورد أسعار الاختبار",exact:true}).waitFor();
+    await page.getByRole("button",{name:"إضافة صنف بسعره"}).click();
+    const item=page.locator("form select[name=item]");
+    await item.selectOption({index:1});
+    for(const price of ["210","270","185.5"]){
+      const priceInput=page.locator("form input[name=price]");
+      await priceInput.fill(price);
+      await page.getByRole("button",{name:"حفظ السعر"}).click();
+      const row=page.locator(".supplier-price-row");
+      await row.getByText(new Intl.NumberFormat("ar-EG").format(Number(price)),{exact:false}).waitFor();
+      assert.equal(await row.count(),1);
+      if(price!=="185.5")await row.getByRole("button").click();
+    }
+    await page.locator("#actor").selectOption("2");
+    await page.getByRole("searchbox").fill("ملفات الموردين");
+    assert.equal(await page.getByRole("button",{name:"ملفات الموردين",exact:true}).count(),0);
+    await page.locator("#actor").selectOption("1");
     await openTask("رصيد المخزون");
     await page.getByText("GREEN-01",{exact:true}).waitFor();
     await page.locator("#actor").selectOption("2");
